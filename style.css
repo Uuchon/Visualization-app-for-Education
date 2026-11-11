@@ -14,10 +14,10 @@ body {
 }
 
 html {
-  height: 100%;
+  height: auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: auto;
 }
 
 body {
@@ -27,9 +27,11 @@ body {
   background: #fafcff;
   overflow-y: visible;
   overscroll-behavior-x: none;
+  touch-action: pan-y;
 }
 
 main {
+  position: relative;
   width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
@@ -52,9 +54,13 @@ input {
     min-width: 320px;
   }
 
+  main {
+    min-height: 0;
+  }
+
   canvas {
     width: 100vw !important;
     height: auto !important;
-    touch-action: pan-y;
+    touch-action: pan-y pinch-zoom !important;
   }
 }
