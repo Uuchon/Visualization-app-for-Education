@@ -1,7 +1,42 @@
-html, body {
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
   margin: 0;
   padding: 0;
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  font-family: sans-serif;
+  -webkit-text-size-adjust: 100%;
 }
+
+body {
+  background: #fafcff;
+  overscroll-behavior-x: none;
+}
+
 canvas {
   display: block;
+  max-width: 100%;
+}
+
+button,
+select,
+input {
+  font: inherit;
+  touch-action: manipulation;
+}
+
+@media (max-width: 700px) {
+  body {
+    min-width: 320px;
+  }
+
+  canvas {
+    width: 100vw !important;
+    height: auto;
+  }
 }
