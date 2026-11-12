@@ -1,22 +1,3 @@
-Claude
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Sketch analyzer · JS
 // USV ANALYZER（実録音版）  p5.js + p5.sound
 // 超音波マイク／バットディテクタで録音したWAV（192〜384 kHzなど）を読み込み、
 //  ① 50 / 31 / 22 kHz コールを自動検出して色分け表示
@@ -418,5 +399,3 @@ function mouseReleased() {
   if (drag && drag.kind === 'spec' && !drag.moved && DATA) { const t = timeAtX(mouseX); pos = t; if (pb.playing) play(t); }
   drag = null;
 }
- 
-Claude finished the response
