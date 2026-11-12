@@ -68,7 +68,9 @@ function hSelect() { return hMake('select'); }
 
 function stageSize() {
   const st = document.getElementById('stage');
-  return { w: Math.max(320, st.clientWidth), h: Math.max(320, st.clientHeight) };
+  // 画面が低いとき（スマホの横向きなど）は、枠より少し高く描いて、縦にスクロールして見られるようにする
+  const minH = (typeof page !== 'undefined' && page !== 'home') ? 480 : 260;
+  return { w: Math.max(280, st.clientWidth), h: Math.max(minH, st.clientHeight) };
 }
 function fitCanvas() {
   const z = stageSize();
@@ -552,20 +554,24 @@ function drawStatusPanel() {
 
   const nmValue = frequencyMapper.frequencyToNanometers(spectralCentroid);
 
-  text(`状態: ${statusText}`, 20, 58);
-  text(`主要周波数: ${dominantFreq.toFixed(0)} Hz`, 20, 83);
-  text(`スペクトル重心: ${spectralCentroid.toFixed(0)} Hz`, 20, 108);
-  text(`耳の感度補正後の大きさ: ${(perceivedLoudness * PHON_MAX).toFixed(0)} phon`, 20, 133);
-  text(`推定波長: ${spectralCentroid > 0 ? nmValue.toFixed(0) : '0'} nm`, 20, 158);
-
-  fill(10, 120, 200);
-  text(`適合音域: ${frequencyMapper.minFreq.toFixed(0)} Hz 〜 ${frequencyMapper.maxFreq.toFixed(0)} Hz`, 20, 183);
-
-  fill(85,92,109);
-  textSize(12);
-  text(`環境ノイズ除去: ${envNoise.profile ? (envNoise.enabled ? 'ON' : '登録済み(OFF)') : '未登録'}`, 20, 208);
-  text(`純音らしさ(平坦度): ${spectralFlatnessDb.toFixed(1)} dB → 彩度 ${currentSaturation.toFixed(0)} %`, 20, 233);
-  text(`入力レベル: ${(-100 + dominantAmplitude * 70).toFixed(0)} dBFS`, 20, 258);
+  // 低い画面では、下の色の帯と重ならない行数だけ出す（大事な順に並べてある）
+  const lines = [
+    [`状態: ${statusText}`, 0], [`主要周波数: ${dominantFreq.toFixed(0)} Hz`, 0],
+    [`耳の感度補正後の大きさ: ${(perceivedLoudness * PHON_MAX).toFixed(0)} phon`, 0],
+    [`スペクトル重心: ${spectralCentroid.toFixed(0)} Hz`, 0],
+    [`推定波長: ${spectralCentroid > 0 ? nmValue.toFixed(0) : '0'} nm`, 0],
+    [`適合音域: ${frequencyMapper.minFreq.toFixed(0)} Hz 〜 ${frequencyMapper.maxFreq.toFixed(0)} Hz`, 1],
+    [`環境ノイズ除去: ${envNoise.profile ? (envNoise.enabled ? 'ON' : '登録済み(OFF)') : '未登録'}`, 2],
+    [`純音らしさ(平坦度): ${spectralFlatnessDb.toFixed(1)} dB → 彩度 ${currentSaturation.toFixed(0)} %`, 2],
+    [`入力レベル: ${(-100 + dominantAmplitude * 70).toFixed(0)} dBFS`, 2]
+  ];
+  const maxLines = Math.max(2, Math.floor((height - 198) / 25));
+  for (let i = 0; i < Math.min(lines.length, maxLines); i++) {
+    if (lines[i][1] === 1) { fill(10, 120, 200); textSize(13); }
+    else if (lines[i][1] === 2) { fill(85, 92, 109); textSize(12); }
+    else { fill(7, 14, 29); textSize(13); }
+    text(lines[i][0], 20, 58 + i * 25);
+  }
 }
 
 // ================= 8) UI 作成とコールバック =================
