@@ -4,6 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>WAVE LAB — 教育用の音の可視化</title>
+<script>
+  // スマホ(画面の短い辺が600px以下のタッチ端末)は、スマホ版ページ(m.html)へ。「PC版」を選んだときは切り替えない。
+  (function () {
+    try {
+      if (/(?:^|[?&])pc=1(?:&|$)/.test(location.search)) { sessionStorage.setItem('wl_pc', '1'); }
+      var phone = window.matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) <= 600;
+      if (phone && !sessionStorage.getItem('wl_pc')) { location.replace('m.html' + (location.search.replace(/(^|[?&])pc=1/, '') || '')); }
+    } catch (e) {}
+  })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Space+Grotesk:wght@300;400;500;600&family=Zen+Kaku+Gothic+New:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -22,6 +32,7 @@
       <button data-page="settings">設定</button>
     </nav>
     <div class="tools">
+      <a id="phoneLink" href="m.html">スマホ版</a>
       <a id="newTab" href="#" target="_blank" rel="noopener" hidden>別タブで開く ↗</a>
       <button id="fsBtn" hidden>全画面</button>
     </div>
