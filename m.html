@@ -12,42 +12,36 @@
 </head>
 <body>
 <header class="bar">
-  <div class="brand">WAVE LAB<small>SOUND → COLOUR</small></div>
-  <a class="pc" href="./?pc=1">PC版 ↗</a>
+  <div class="brand">WAVE LAB<small>SOUND → COLOUR / EDUCATION</small></div>
 </header>
+<nav class="tabs" id="tabs" aria-label="ページ">
+  <button data-p="home" class="active">体験</button>
+  <button data-p="graph">グラフ</button>
+  <button data-p="class">授業</button>
+  <button data-p="report">記録</button>
+  <button data-p="settings">設定</button>
+  <a class="pc" href="./?pc=1">PC版</a>
+</nav>
 
-<div class="layout">
-  <!-- 左（縦持ちでは上）: 色の円・音名・音程のずれ・ボタン -->
-  <section class="stage" aria-label="いまの音の色">
+<main id="pages">
+
+<!-- ================= 体験 ================= -->
+<section class="page layout2 active" id="p-home">
+  <div class="stage" aria-label="いまの音の色">
     <div class="orbwrap"><div id="orb" role="img" aria-label="音の色の円"></div></div>
     <div class="note"><span id="noteName">—</span><span id="noteSub">音を出してみよう</span></div>
     <div class="gauge" aria-label="音程のずれ">
       <div class="gtrack"><i class="tick"></i><div id="needle"></div></div>
       <div class="glabels"><span>低い</span><span id="centsTxt">±0 cent</span><span>高い</span></div>
     </div>
-    <div class="actions">
-      <button class="btn" id="btnMic">マイク</button>
-      <button class="btn" id="btnTone">テスト音</button>
-      <button class="btn" id="btnFile">ファイル</button>
-      <input type="file" id="fileIn" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac,.aac" hidden>
-    </div>
-    <p class="msg" id="msg" role="status"></p>
-  </section>
-
-  <!-- 右（縦持ちでは下）: 色の決めかた・数値・スペクトル -->
-  <section class="side" aria-label="くわしい数値">
+  </div>
+  <div class="side">
     <div class="card">
       <label class="lbl" for="mapSel">色の決めかた</label>
-      <select id="mapSel">
-        <option value="audible">全体の音（低い=赤 → 高い=紫）</option>
-        <option value="scale">音階（ドレミ→色相環）</option>
-        <option value="whistle">笛の音（500〜2500 Hz）</option>
-        <option value="voice">声の高さ（80〜500 Hz）</option>
-      </select>
+      <select id="mapSel" data-map></select>
       <div class="strip" id="strip"><i id="stripMark"></i></div>
       <div class="stripl"><span id="stripL"></span><span id="stripR"></span></div>
     </div>
-
     <div class="card grid" id="metrics">
       <div><span>基本周波数 F0</span><b id="mF0">—</b></div>
       <div><span>スペクトル重心</span><b id="mCent">—</b></div>
@@ -58,19 +52,128 @@
       <div><span>明度 B</span><b id="mB">—</b></div>
       <div><span>入力レベル</span><b id="mLv">—</b></div>
     </div>
-
     <div class="card">
       <div class="lbl">FFTスペクトル（対数周波数）</div>
-      <canvas id="fftCv" height="120"></canvas>
-      <div class="axis"><span>20</span><span>100</span><span>1k</span><span>10k</span><span>Hz</span></div>
+      <canvas id="cvHome" height="120"></canvas>
     </div>
+  </div>
+</section>
 
-    <div class="card">
-      <label class="lbl" for="sens">感度（色が暗い・うすいとき）<b id="sensV"></b></label>
-      <input type="range" id="sens" min="60" max="130" step="1" value="100">
-      <p class="hint">大きい声を出しても色が暗いときは右へ、すぐ明るくなりすぎるときは左へ。</p>
+<!-- ================= グラフ ================= -->
+<section class="page cols" id="p-graph">
+  <div class="card"><div class="lbl">FFTスペクトルと耳の感度</div><canvas id="cvFft" height="170"></canvas><p class="hint">黒い線は耳の感度（40 phon）。低い音と高すぎる音は、同じ音圧でも小さく聞こえます。</p></div>
+  <div class="card"><div class="lbl">等ラウドネス曲線（ISO 226）</div><canvas id="cvContour" height="230"></canvas><p class="hint">縦=音圧[dB SPL]。同じ線の上の音は、同じ大きさ(phon)に聞こえます。丸が今の音です。</p></div>
+  <div class="card"><div class="lbl">色の対応マップ（周波数 × phon → 色）</div><canvas id="cvMap" height="230"></canvas><p class="hint">横=周波数(→色相)、縦=大きさ[phon](→明度)。白い線と丸は、補正ありの色の軌跡です。</p></div>
+  <div class="card" id="hsb">
+    <div class="lbl">色の3つの要素（HSB）</div>
+    <div class="hsbrow"><div class="hl"><b>H 色相</b><span id="hsbH"></span></div><div class="strip" id="stH"><i></i></div><div class="stripl"><span id="stHL"></span><span id="stHR"></span></div></div>
+    <div class="hsbrow"><div class="hl"><b>S 彩度</b><span id="hsbS"></span></div><div class="strip" id="stS"><i></i></div><div class="stripl"><span>純音に近い（鮮やか）</span><span>ノイズ的（くすむ）</span></div></div>
+    <div class="hsbrow"><div class="hl"><b>B 明度</b><span id="hsbB"></span></div><div class="strip" id="stB"><i></i></div><div class="stripl"><span>0 phon（暗）</span><span>90 phon（明）</span></div></div>
+  </div>
+</section>
+
+<!-- ================= 授業 ================= -->
+<section class="page cols" id="p-class">
+  <div class="card">
+    <label class="lbl" for="clsMode">色相マッピングの切り替え</label>
+    <select id="clsMode"></select>
+    <div class="row2">
+      <select id="clsRef" aria-label="基準の音"><option value="440">A4 = 440 Hz</option><option value="442">A4 = 442 Hz</option><option value="443">A4 = 443 Hz</option><option value="415">A4 = 415 Hz</option></select>
+      <select id="clsTarget" aria-label="目標の音"></select>
     </div>
-  </section>
+    <div class="strip" id="clsStrip"><i></i></div>
+    <div class="stripl"><span id="clsL"></span><span id="clsR"></span></div>
+    <p class="hint">「好きなHzの範囲」は、設定ページで範囲を決めます。</p>
+  </div>
+  <div class="card"><div class="lbl">音程のずれ（基準音との差）</div><canvas id="cvTuner" height="300"></canvas></div>
+  <div class="card">
+    <div class="lbl">声・音の特徴（数値と色）</div>
+    <div id="voice" class="vrows"></div>
+    <div class="lbl" style="margin-top:14px">倍音の強さ（最大を0 dBとした相対値）</div>
+    <canvas id="cvHarm" height="130"></canvas>
+  </div>
+  <div class="card"><div class="lbl">倍音の位置（FFTスペクトル）</div><canvas id="cvHarmSpec" height="150"></canvas></div>
+  <div class="card wide"><div class="lbl">音程の軌跡（直近10秒。緑の帯=±10 cent）</div><canvas id="cvTrace" height="150"></canvas></div>
+</section>
+
+<!-- ================= 記録 ================= -->
+<section class="page cols" id="p-report">
+  <div class="card wide">
+    <div class="lbl">記録のようす</div>
+    <p class="stat" id="logStat">○ 停止中　0 点 / 0.0 秒</p>
+    <div class="btns">
+      <button class="btn" id="bCsvT">時系列CSV</button>
+      <button class="btn" id="bCsvS">スペクトルCSV</button>
+      <button class="btn" id="bPng">レポート画像</button>
+      <button class="btn ghost" id="bReset">記録をリセット</button>
+    </div>
+    <p class="hint">音を出している間、0.05秒ごとに自動で記録されます。ファイルは端末のダウンロードに保存されます。</p>
+  </div>
+  <div class="card"><div class="lbl">平均スペクトル（補正なし ／ 補正あり）</div><canvas id="cvAvg" height="190"></canvas></div>
+  <div class="card"><div class="lbl">色の対応マップと軌跡</div><canvas id="cvMapT" height="230"></canvas></div>
+  <div class="card" id="ncCard" style="display:none"><div class="lbl">ノイズ除去のしくみ</div><canvas id="cvNc" height="190"></canvas></div>
+  <div class="card wide"><div class="lbl">時間軸: 色の変化と、感じる大きさ[phon]</div><canvas id="cvTime" height="210"></canvas></div>
+</section>
+
+<!-- ================= 設定 ================= -->
+<section class="page cols" id="p-settings">
+  <div class="card">
+    <h3><span>01</span>色に対応させる周波数</h3>
+    <p class="hint">音の高さを、どの範囲で色に対応させるかを決めます。</p>
+    <select id="stMode"></select>
+    <select id="stPreset" style="margin-top:10px"></select>
+    <div id="freeBox">
+      <select id="stSrc" style="margin-top:10px"><option value="centroid">色を決める音: スペクトル重心（音の明るさ）</option><option value="f0">色を決める音: F0（基本周波数・音の高さ）</option></select>
+      <div class="sl"><label>下限の周波数<b id="vLow"></b></label><input type="range" id="sLow" min="0" max="1000" step="1"></div>
+      <div class="sl"><label>上限の周波数<b id="vHigh"></b></label><input type="range" id="sHigh" min="0" max="1000" step="1"></div>
+      <div class="sl"><label>開始の色相（0°=赤）<b id="vH0"></b></label><input type="range" id="sH0" min="0" max="360" step="1"></div>
+      <div class="sl"><label>色相の幅（270°=赤〜紫）<b id="vSpan"></b></label><input type="range" id="sSpan" min="30" max="360" step="1"></div>
+    </div>
+    <button class="btn wideb" id="bCalRange">音域を自動で合わせる（3秒）</button>
+  </div>
+
+  <div class="card">
+    <h3><span>02</span>音量・校正</h3>
+    <p class="hint">画面のphonは相対値です。色がうすい・暗いときは、大きめの声で「自動で合わせる」を押してください。</p>
+    <div class="sl"><label>音圧の校正（0 dBFS = ○○ dB SPL）<b id="vSpl"></b></label><input type="range" id="sSpl" min="40" max="140" step="1"></div>
+    <div class="sl"><label>スピーカー音量（再生・テスト音）<b id="vVol"></b></label><input type="range" id="sVol" min="0" max="1" step="0.01"></div>
+    <button class="btn wideb" id="bCalLevel">音量を自動で合わせる（3秒・大きめの声）</button>
+  </div>
+
+  <div class="card">
+    <h3><span>03</span>ノイズ除去</h3>
+    <p class="hint"><b>録音ファイル</b>は、音そのものから雑音を引きます。<b>マイク</b>は、静かにして登録した環境ノイズ（エアコン・外の音など）を、解析から引きます。</p>
+    <div class="sl"><label>除去の強さ（読み込んだ録音）<b id="vNr"></b></label><input type="range" id="sNr" min="0.5" max="4" step="0.1"></div>
+    <select id="stNrMode"><option value="auto">雑音の取り方: 自動（静かな部分）</option><option value="head">雑音の取り方: 冒頭0.5秒</option></select>
+    <div class="sl"><label>環境ノイズ除去の強さ（マイク）<b id="vEnv"></b></label><input type="range" id="sEnv" min="1" max="3" step="0.1"></div>
+    <div class="row2 btnrow"><button class="btn" id="bCalNoise">環境ノイズを登録（3秒・静かに）</button><button class="btn ghost" id="bEnvDel">削除</button></div>
+    <p class="hint" id="envState">環境ノイズ: 未登録</p>
+    <button class="btn wideb" id="bEnvToggle">環境ノイズ除去: OFF</button>
+  </div>
+
+  <div class="card">
+    <h3><span>04</span>表示</h3>
+    <p class="hint">低い音を細かく見たいときは「高」「最高」。反応は少しゆっくりになります。</p>
+    <select id="stFft"><option value="1024">FFTの細かさ: 標準（約47Hz刻み）</option><option value="4096" selected>FFTの細かさ: 高（約12Hz刻み）</option><option value="8192">FFTの細かさ: 最高（約6Hz刻み）</option></select>
+  </div>
+</section>
+</main>
+
+<!-- ================= 音の入り口（どのページでも使える） ================= -->
+<div class="dock" id="dock">
+  <p class="msg" id="msg" role="status"></p>
+  <div class="dockrow" id="dockFile" hidden>
+    <button class="mini" id="bPlay" aria-label="再生">再生</button>
+    <input type="range" id="seek" min="0" max="1000" value="0" aria-label="再生位置">
+    <span id="seekT">0:00</span>
+    <button class="mini" id="bNr">除去 ON</button>
+  </div>
+  <div class="dockrow actions">
+    <button class="btn" id="btnMic">マイク</button>
+    <button class="btn" id="btnTone">テスト音</button>
+    <button class="btn" id="btnFile">ファイル</button>
+    <input type="file" id="fileIn" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac,.aac" hidden>
+  </div>
 </div>
 
 <script src="m.js"></script>
