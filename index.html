@@ -9,7 +9,8 @@
   (function () {
     try {
       if (/(?:^|[?&])pc=1(?:&|$)/.test(location.search)) { sessionStorage.setItem('wl_pc', '1'); }
-      var phone = window.matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) <= 600;
+      var coarse = window.matchMedia('(pointer: coarse)').matches;
+      var phone = (coarse && Math.min(screen.width, screen.height) <= 600) || window.innerWidth <= 600 || (coarse && window.innerHeight <= 500);
       if (phone && !sessionStorage.getItem('wl_pc')) { location.replace('m.html' + (location.search.replace(/(^|[?&])pc=1/, '') || '')); }
     } catch (e) {}
   })();
@@ -42,6 +43,8 @@
     <button data-page="class">授業</button>
     <button data-page="report">記録</button>
   </nav>
+
+  <a id="phoneBanner" href="m.html">スマホ向けの画面に切り替える →</a>
 
   <div class="sourcebar" id="slot-sources"><span class="srclabel">INPUT</span></div>
 
