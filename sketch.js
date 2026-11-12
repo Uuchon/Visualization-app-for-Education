@@ -1,8 +1,8 @@
 // noprotect
 // ============================================================
-// WAVE LAB v2 - 授業用 (p5 2.x + p5.sound 前提)
-//   ページ構成: 🏠ホーム / 📈グラフ / 🗂記録 / 🎓授業 / ⚙設定（数字キー 1〜5 でも切替）
-//   ⚙設定: 色に対応させるHz・環境ノイズ除去・音量の校正・FFTの細かさ
+// 音の色プロット（アプリ本体） - app.html から読み込まれます (p5 2.x + p5.sound)
+//   画面: 体験する / くわしく見る（グラフ・授業・記録） / 設定（数字キー 1〜5 でも切替）
+//   ボタンや設定は本物のHTML部品（app.html の枠の中）。p5のキャンバスは描画だけを担当します。
 //   追加機能: 音声ファイルの読み込み(ドラッグ&ドロップ可) → スペクトル減算でノイズ除去 →
 //             再生しながら FFT・等ラウドネス曲線・色(HSB)が動く。ノイズ除去 ON/OFF を再生中に切替可能。
 //
@@ -13,12 +13,71 @@
 // として色(HSB)に対応づけて可視化します。
 //
 // 画面: メイン画面 = 元のシンプルUI
-//       「📈 音と色のグラフ」(または G キー) = 研究用グラフ
+//       「音と色のグラフ」(または G キー) = 研究用グラフ
 //         ① FFTスペクトル(対数周波数) + 耳の感度カーブ
 //         ② 等ラウドネス曲線 + 現在の音の位置
 //         ③ 周波数×phon → 色(HSB)のカラーマップ
 //         ④ H / S / B 3軸のグラデーションバー
 // ============================================================
+
+// ================= HTML部品（サイト用） =================
+// p5のDOM関数（createButtonなど）の代わりに、本物のHTML部品を作る。位置はCSSで決まる。
+let UI_CTX = 'sources';                      // 次に作る部品を入れる場所（app.html の slot-○○）
+class H {
+  constructor(el) { this.elt = el; }
+  position() { return this; }                // 位置はCSSに任せる
+  style(k, v) { this.elt.style.setProperty(k, v); return this; }
+  html(h) {
+    if (h === undefined) { return this.elt.innerHTML; }
+    this.elt.innerHTML = h;
+    if (this.elt.classList.contains('btn')) { this.elt.classList.toggle('on', /停止|ON$/.test(h)); }
+    return this;
+  }
+  show() { this.elt.style.display = ''; return this; }
+  hide() { this.elt.style.display = 'none'; return this; }
+  mousePressed(f) { this.elt.addEventListener('click', f); return this; }
+  input(f) { this.elt.addEventListener('input', f); return this; }
+  changed(f) { this.elt.addEventListener('change', f); return this; }
+  value(v) {
+    if (v === undefined) { return this.elt.type === 'range' ? Number(this.elt.value) : this.elt.value; }
+    this.elt.value = v;
+    return this;
+  }
+  option(label, val) {
+    const o = document.createElement('option');
+    o.textContent = label; o.value = val;
+    this.elt.appendChild(o);
+    return this;
+  }
+  selected(v) { this.elt.value = v; return this; }
+}
+function hMake(tag, cls) {
+  const el = document.createElement(tag);
+  if (cls) { el.className = cls; }
+  (document.getElementById('slot-' + UI_CTX) || document.body).appendChild(el);
+  return new H(el);
+}
+function hBtn(label) { const b = hMake('button', 'btn'); b.html(label); return b; }
+function hDiv(label) { const d = hMake('div', 'lbl'); d.html(label); return d; }
+function hSlider(mn, mx, val, step) {
+  const s = hMake('input');
+  s.elt.type = 'range'; s.elt.min = String(mn); s.elt.max = String(mx); s.elt.step = String(step || 1); s.elt.value = String(val);
+  return s;
+}
+function hSelect() { return hMake('select'); }
+
+function stageSize() {
+  const st = document.getElementById('stage');
+  return { w: Math.max(320, st.clientWidth), h: Math.max(320, st.clientHeight) };
+}
+function fitCanvas() {
+  const z = stageSize();
+  if (z.w !== width || z.h !== height) { resizeCanvas(z.w, z.h); }
+}
+function showEl(id, on, disp) {
+  const el = document.getElementById(id);
+  if (el) { el.style.display = on ? disp : 'none'; }
+}
 
 // ================= 0) FFT・音声入力の安全ラッパー =================
 class SafeFFT {
@@ -166,8 +225,8 @@ const fp = { gain: null, src: null, orig: null, clean: null, name: '', playing: 
              startedAt: 0, offset: 0, useClean: true, processing: false, progress: 0, job: 0,
              env0: null, env1: null, lvl0: null, lvl1: null, alphaUsed: null, note: '', method: '' };
 let loadButton, playButton, nrToggleButton, nrSlider, nrSelect, fileInputEl;
-const PLAYER_Y = 100;      // プレーヤーバーの位置
-const OVERLAY_Y = 134;     // グラフ画面の開始位置
+const PLAYER_Y = 8;        // プレーヤーバーの位置（キャンバスの一番上）
+const OVERLAY_Y = 46;      // グラフ画面などの開始位置
 
 // グラフ表示用
 const PHON_MAX = 90;
@@ -271,8 +330,11 @@ function hsbColor(h, s, b, a = 255) {
 
 // ================= 4) p5 setup / draw =================
 function setup() {
-  createCanvas(windowWidth, windowHeight);
-  textFont('sans-serif');
+  const z = stageSize();
+  createCanvas(z.w, z.h);
+  const cv = document.querySelector('canvas.p5Canvas') || document.querySelector('canvas');
+  document.getElementById('stage').appendChild(cv);        // キャンバスを枠の中へ
+  textFont('Space Grotesk, Zen Kaku Gothic New, Hiragino Sans, Yu Gothic UI, sans-serif');
 
   ensureFFTReady();
 
@@ -286,10 +348,11 @@ function setup() {
   initClassUI();
   initSettingsUI();
   initPageUI();
+  if (typeof ResizeObserver === 'function') { new ResizeObserver(() => { requestAnimationFrame(fitCanvas); }).observe(document.getElementById('stage')); }
 }
 
 function draw() {
-  background(250, 252, 255);
+  background(249,249,246);
 
   // スイープ音
   if (noiseActive) {
@@ -326,13 +389,13 @@ function draw() {
   drawPlayerBar();
   syncFileButtons();
   syncEnvButton();
+  syncSourceBar();
   reportSnapshotIfNeeded();
   drawToast();
 }
 
 function windowResized() {
-  resizeCanvas(windowWidth, windowHeight);
-  layoutSettingsDx();
+  fitCanvas();
 }
 
 
@@ -433,7 +496,7 @@ function drawColorHistoryTimeline() {
   strokeWeight(1);
   line(0, timelineY, width, timelineY);
 
-  fill(100);
+  fill(85,92,109);
   noStroke();
   textSize(11);
   textAlign(LEFT, BOTTOM);
@@ -475,34 +538,34 @@ function drawDynamicCircle() {
 }
 
 function drawStatusPanel() {
-  fill(40);
+  fill(7,14,29);
   noStroke();
   textSize(13);
   textAlign(LEFT, TOP);
 
   let statusText = '待機中';
-  if (isCalibrating) statusText = '⏳ 3秒計測中（' + calib.label + '）';
+  if (isCalibrating) statusText = '3秒計測中（' + calib.label + '）';
   else if (micActive) statusText = 'マイク入力中';
   else if (noiseActive) statusText = 'スイープテスト音生成中';
-  else if (fp.processing) statusText = '⏳ 音声ファイルのノイズ除去中...';
+  else if (fp.processing) statusText = '音声ファイルのノイズ除去中...';
   else if (fp.playing) statusText = fp.useClean ? 'ファイル再生中（ノイズ除去 ON）' : 'ファイル再生中（元の音声）';
 
   const nmValue = frequencyMapper.frequencyToNanometers(spectralCentroid);
 
-  text(`状態: ${statusText}`, 20, 140);
-  text(`主要周波数: ${dominantFreq.toFixed(0)} Hz`, 20, 165);
-  text(`スペクトル重心: ${spectralCentroid.toFixed(0)} Hz`, 20, 190);
-  text(`耳の感度補正後の大きさ: ${(perceivedLoudness * PHON_MAX).toFixed(0)} phon`, 20, 215);
-  text(`推定波長: ${spectralCentroid > 0 ? nmValue.toFixed(0) : '0'} nm`, 20, 240);
+  text(`状態: ${statusText}`, 20, 58);
+  text(`主要周波数: ${dominantFreq.toFixed(0)} Hz`, 20, 83);
+  text(`スペクトル重心: ${spectralCentroid.toFixed(0)} Hz`, 20, 108);
+  text(`耳の感度補正後の大きさ: ${(perceivedLoudness * PHON_MAX).toFixed(0)} phon`, 20, 133);
+  text(`推定波長: ${spectralCentroid > 0 ? nmValue.toFixed(0) : '0'} nm`, 20, 158);
 
   fill(10, 120, 200);
-  text(`適合音域: ${frequencyMapper.minFreq.toFixed(0)} Hz 〜 ${frequencyMapper.maxFreq.toFixed(0)} Hz`, 20, 265);
+  text(`適合音域: ${frequencyMapper.minFreq.toFixed(0)} Hz 〜 ${frequencyMapper.maxFreq.toFixed(0)} Hz`, 20, 183);
 
-  fill(80);
+  fill(85,92,109);
   textSize(12);
-  text(`環境ノイズ除去: ${envNoise.profile ? (envNoise.enabled ? 'ON' : '登録済み(OFF)') : '未登録'}`, 20, 290);
-  text(`純音らしさ(平坦度): ${spectralFlatnessDb.toFixed(1)} dB → 彩度 ${currentSaturation.toFixed(0)} %`, 20, 315);
-  text(`入力レベル: ${(-100 + dominantAmplitude * 70).toFixed(0)} dBFS`, 20, 340);
+  text(`環境ノイズ除去: ${envNoise.profile ? (envNoise.enabled ? 'ON' : '登録済み(OFF)') : '未登録'}`, 20, 208);
+  text(`純音らしさ(平坦度): ${spectralFlatnessDb.toFixed(1)} dB → 彩度 ${currentSaturation.toFixed(0)} %`, 20, 233);
+  text(`入力レベル: ${(-100 + dominantAmplitude * 70).toFixed(0)} dBFS`, 20, 258);
 }
 
 // ================= 8) UI 作成とコールバック =================
@@ -512,29 +575,20 @@ function toggleNoise() {
     if (micActive) {
       audioProcessor.stopMicrophone();
       micActive = false;
-      micButton.html('🎤 マイク開始');
+      micButton.html('マイク開始');
     }
     audioProcessor.startOscillator();
     noiseActive = true;
-    noiseButton.html('🔊 テスト音停止');
+    noiseButton.html('テスト音停止');
   } else {
     audioProcessor.stopOscillator();
     noiseActive = false;
-    noiseButton.html('🔊 スイープ音テスト');
+    noiseButton.html('スイープ音テスト');
   }
 }
 
 function styleButton(btn, bgColor) {
-  btn.style('background-color', bgColor);
-  btn.style('color', 'white');
-  btn.style('border', 'none');
-  btn.style('padding', '8px 12px');
-  btn.style('border-radius', '20px');
-  btn.style('cursor', 'pointer');
-  btn.style('font-weight', 'bold');
-  btn.style('font-size', '12px');
-  btn.style('width', '150px');
-  btn.style('box-shadow', '0 2px 5px rgba(0,0,0,0.1)');
+  void bgColor;                                  // 色はサイトに合わせて style.css が決める（押している間は .on）
 }
 
 // ================= 9) 研究用グラフ =================
@@ -550,7 +604,7 @@ function drawMarker(px, py, col) {                 // 白ふち + 黒ふちで�
   strokeWeight(5);
   fill(col);
   circle(px, py, 16);
-  stroke(30);
+  stroke(7,14,29);
   strokeWeight(1.5);
   noFill();
   circle(px, py, 16);
@@ -560,8 +614,8 @@ function drawMarker(px, py, col) {                 // 白ふち + 黒ふちで�
 function drawContourChart(x, y, w, h) {
   const yOf = spl => map(spl, 0, 120, y + h, y, true);
 
-  fill(255);
-  stroke(220);
+  fill(244,244,240);
+  stroke(197,201,211);
   strokeWeight(1);
   rect(x, y, w, h, 8);
 
@@ -571,7 +625,7 @@ function drawContourChart(x, y, w, h) {
     stroke(235);
     line(gx, y, gx, y + h);
     noStroke();
-    fill(120);
+    fill(129,136,152);
     textAlign(CENTER, TOP);
     text(fmtHz(f), gx, y + h + 3);
   }
@@ -580,12 +634,12 @@ function drawContourChart(x, y, w, h) {
     stroke(235);
     line(x, gy, x + w, gy);
     noStroke();
-    fill(120);
+    fill(129,136,152);
     textAlign(RIGHT, CENTER);
     text(d, x - 4, gy);
   }
 
-  fill(80);
+  fill(85,92,109);
   textAlign(LEFT, BOTTOM);
   textSize(12);
   text('等ラウドネス曲線 (ISO 226:2003)  縦: 音圧レベル[dB SPL]', x, y - 4);
@@ -602,7 +656,7 @@ function drawContourChart(x, y, w, h) {
     endShape();
 
     noStroke();
-    fill(60);
+    fill(7,14,29);
     textSize(10);
     textAlign(LEFT, CENTER);
     text(ph + ' phon', xOfFreq(12500, x, w) + 3, yOf(contourSPL(12500, ph)));
@@ -613,7 +667,7 @@ function drawContourChart(x, y, w, h) {
     const py = yOf(liveSPL());
     drawMarker(px, py, color(currentColor.r, currentColor.g, currentColor.b));
     noStroke();
-    fill(30);
+    fill(7,14,29);
     textSize(11);
     textAlign(LEFT, BOTTOM);
     const ph = phonFromSPL(dominantFreq, liveSPL());
@@ -652,12 +706,12 @@ function drawColorMap(x, y, w, h) {
   image(getHeatmap(Math.floor(w), Math.floor(h)), x, y);
 
   noFill();
-  stroke(220);
+  stroke(197,201,211);
   strokeWeight(1);
   rect(x, y, w, h, 8);
 
   textSize(10);
-  fill(120);
+  fill(129,136,152);
   noStroke();
   for (const f of [20, 100, 1000, 10000, 20000]) {
     textAlign(CENTER, TOP);
@@ -668,7 +722,7 @@ function drawColorMap(x, y, w, h) {
     text(p, x - 4, map(p, 0, PHON_MAX, y + h, y));
   }
 
-  fill(80);
+  fill(85,92,109);
   textAlign(LEFT, BOTTOM);
   textSize(12);
   text('色の対応マップ  横: 周波数(→色相)  縦: 大きさ[phon](→明度)', x, y - 4);
@@ -698,7 +752,7 @@ function drawStrip(label, x, y, w, colorAt, leftText, rightText, markerT) {
   rect(x, y, w, h, 4);
 
   noStroke();
-  fill(60);
+  fill(7,14,29);
   textSize(12);
   textAlign(LEFT, BOTTOM);
   text(label, x, y - 3);
@@ -712,7 +766,7 @@ function drawStrip(label, x, y, w, colorAt, leftText, rightText, markerT) {
 
   if (markerT !== null && markerT >= 0) {
     const mx = x + w * constrain(markerT, 0, 1);
-    fill(30);
+    fill(7,14,29);
     noStroke();
     triangle(mx, y - 1, mx - 5, y - 9, mx + 5, y - 9);
   }
@@ -758,22 +812,22 @@ function drawHSBStrips(x, y, w) {
 // ---- オーバーレイ全体 ----
 function drawLoudnessChartsOverlay() {
   noStroke();
-  fill(250, 252, 255, 248);
+  fill(249,249,246, 248);
   rect(0, OVERLAY_Y, width, height - OVERLAY_Y);
 
-  fill(40);
+  fill(7,14,29);
   textSize(15);
   textAlign(LEFT, TOP);
   text('音を「耳の感度」で補正して色にする仕組み', 20, OVERLAY_Y + 4);
 
-  fill(80);
+  fill(85,92,109);
   textSize(11);
   text(`校正: 0 dBFS = ${splOffset} dB SPL`, 20, OVERLAY_Y + 32);
-  fill(120);
-  text('(⚙設定の「音圧の校正」で変えられます)', 500, OVERLAY_Y + 32);
+  fill(129,136,152);
+  text('(設定の「音圧の校正」で変えられます)', 500, OVERLAY_Y + 32);
 
   const m = 40;
-  const top = OVERLAY_Y + 81;
+  const top = OVERLAY_Y + 52;
   const n = width >= 1000 ? 3 : 2;                 // 広い画面ではFFTも並べる
   const panelW = (width - m * (n + 1)) / n;
   const panelH = constrain(height - top - 230, 150, 340);
@@ -784,7 +838,7 @@ function drawLoudnessChartsOverlay() {
   drawColorMap(m + (panelW + m) * col, top, panelW, panelH);
   drawHSBStrips(m, top + panelH + 55, width - m * 2);
 
-  fill(120);
+  fill(129,136,152);
   textSize(10);
   textAlign(LEFT, BOTTOM);
   text('数字キー 1〜5 でもページを切り替えられます', 20, height - 6);
@@ -1202,11 +1256,11 @@ async function runDenoise(isNew) {
     tooQuiet = (fp.lvl1 - fp.lvl0) < -6;                 // 演奏部が6dB以上小さくなった = 消しすぎ
     if (!tooQuiet) { break; }
     alpha *= 0.6;                                        // 弱めてやり直す
-    fp.note = '⚠ 音が消えすぎたため、強さを自動で弱めました';
+    fp.note = '注意: 音が消えすぎたため、強さを自動で弱めました';
   }
   if (tooQuiet) {
     fp.useClean = false;                                 // それでも消える場合は元の音声を使う
-    fp.note = '⚠ 除去すると演奏まで小さくなります。雑音だけの区間を含む録音か、強さを下げて試してください（今は元の音声）';
+    fp.note = '注意: 除去すると演奏まで小さくなります。雑音だけの区間を含む録音か、強さを下げて試してください（今は元の音声）';
   }
   fp.specOrig = avgSpecDb(src.getChannelData(0), hop);
   fp.specClean = avgSpecDb(out.getChannelData(0), hop);
@@ -1274,14 +1328,14 @@ function fpPause() {
 }
 
 async function onPlayPressed() {
-  if (!fp.orig) { alert('先に「📂 音声ファイル」で読み込んでください。'); return; }
+  if (!fp.orig) { alert('先に「音声ファイル」で読み込んでください。'); return; }
   if (fp.processing) return;
   await ensureUserAudioStarted();
   if (fp.playing) { fpPause(); return; }
   if (micActive) {
     audioProcessor.stopMicrophone();
     micActive = false;
-    micButton.html('🎤 マイク開始');
+    micButton.html('マイク開始');
   }
   if (noiseActive) toggleNoise();
   fpStart(fp.offset >= fp.orig.duration - 0.05 ? 0 : fp.offset);
@@ -1295,9 +1349,9 @@ function onNrToggle() {
 let lastPlayLabel = '';
 let lastNrLabel = '';
 function syncFileButtons() {
-  const pl = fp.processing ? '⏳ 処理中…' : (fp.playing ? '⏸ 一時停止' : '▶ 再生');
+  const pl = fp.processing ? '処理中…' : (fp.playing ? '一時停止' : '再生');
   if (pl !== lastPlayLabel) { playButton.html(pl); lastPlayLabel = pl; }
-  const nl = fp.useClean ? '🔇 ノイズ除去: ON' : '🔈 ノイズ除去: OFF';
+  const nl = fp.useClean ? 'ノイズ除去: ON' : 'ノイズ除去: OFF';
   if (nl !== lastNrLabel) {
     nrToggleButton.html(nl);
     nrToggleButton.style('background-color', fp.useClean ? '#10ac84' : '#778ca3');
@@ -1315,14 +1369,14 @@ function playerBarRect() { return { x: 20, y: PLAYER_Y, w: Math.max(240, width -
 function drawPlayerBar() {
   const r = playerBarRect();
   noStroke();
-  fill(225, 232, 245);
+  fill(197,201,211);
   rect(r.x, r.y, r.w, r.h, 7);
   textSize(11);
   textAlign(LEFT, TOP);
 
   if (!fp.orig) {
-    fill(120);
-    text('📂 音声ファイルを読み込む（または画面にドラッグ&ドロップ）→ 自動でノイズ除去して再生できます', r.x, r.y + r.h + 4);
+    fill(129,136,152);
+    text('音声ファイルを読み込む（または画面にドラッグ&ドロップ）→ 自動でノイズ除去して再生できます', r.x, r.y + r.h + 4);
     return;
   }
   const dur = fp.orig.duration, pos = fpPos(), px = r.x + r.w * pos / dur;
@@ -1339,19 +1393,19 @@ function drawPlayerBar() {
     }
   };
   drawEnv(fp.env0, color(150, 160, 185));
-  drawEnv(fp.env1, color(16, 172, 132));
+  drawEnv(fp.env1, color(9,181,215));
 
-  stroke(74, 105, 189);                                     // 再生位置
+  stroke(36,72,255);                                     // 再生位置
   strokeWeight(2);
   line(px, r.y - 3, px, r.y + r.h + 3);
-  fill(255);
+  fill(244,244,240);
   circle(px, r.y + r.h / 2, r.h + 2);
 
   noStroke();
   fill(70);
   const st = fp.processing
-    ? `⏳ ノイズ除去中 ${Math.round(fp.progress * 100)}%`
-    : (fp.useClean ? '🔇 ノイズ除去 ON' : '🔈 元の音声');
+    ? `ノイズ除去中 ${Math.round(fp.progress * 100)}%`
+    : (fp.useClean ? 'ノイズ除去 ON' : '元の音声');
   const lv = (fp.lvl0 !== null && fp.lvl1 !== null) ? `   演奏部レベル ${fp.lvl0.toFixed(0)}→${fp.lvl1.toFixed(0)} dBFS` : '';
   const used = fp.alphaUsed !== null ? fp.alphaUsed : nrSlider.value();
   text(`${fp.name}   ${fmtTime(pos)} / ${fmtTime(dur)}   ${st}   強さ ×${Number(used).toFixed(1)}${lv}   (灰=元 / 緑=除去後)${fp.method ? '   雑音: ' + fp.method : ''}`, r.x, r.y + r.h + 4);
@@ -1584,21 +1638,21 @@ function drawColorMapTrail(x, y, w, h) {
   text('S', px(a) + 6, yI(a) - 4);
   text('E', px(b) + 8, yI(b) - 4);
   fill(255, 255, 255, 220); rect(x + 6, y + h - 22, 250, 18, 4);
-  fill(40); textSize(10); textAlign(LEFT, CENTER);
+  fill(7,14,29); textSize(10); textAlign(LEFT, CENTER);
   text('● 補正あり  ○ 補正なし(点線)  S=開始 E=現在 大きい点=新しい', x + 12, y + h - 13);
   pop();
 }
 
 // ---- レポート画面 ----
 function drawSpectrumCompare(x, y, w, h) {
-  fill(255); stroke(220); strokeWeight(1); rect(x, y, w, h, 8);
+  fill(244,244,240); stroke(197,201,211); strokeWeight(1); rect(x, y, w, h, 8);
   textSize(10);
   for (const f of [20, 100, 500, 1000, 5000, 20000]) {
     const gx = xOfFreq(f, x, w);
-    stroke(238); line(gx, y, gx, y + h);
-    noStroke(); fill(120); textAlign(CENTER, TOP); text(fmtHz(f), gx, y + h + 3);
+    stroke(226,228,233); line(gx, y, gx, y + h);
+    noStroke(); fill(129,136,152); textAlign(CENTER, TOP); text(fmtHz(f), gx, y + h + 3);
   }
-  noStroke(); fill(80); textAlign(LEFT, BOTTOM); textSize(12);
+  noStroke(); fill(85,92,109); textAlign(LEFT, BOTTOM); textSize(12);
   text('平均スペクトル: 補正なし(灰) と 等ラウドネス曲線に沿った大きさ(色)', x, y - 4);
   if (!LOG.avg || LOG.avgN === 0) {
     fill(150); textAlign(CENTER, CENTER); textSize(13);
@@ -1616,22 +1670,22 @@ function drawSpectrumCompare(x, y, w, h) {
     fill(150, 160, 180, 170); rect(x + i * bw + 1, y + h - flat * (h - 10) - 4, bw - 2, flat * (h - 10), 2);
     fill(hsbColor(hueForFreq(fc), 80, 95)); rect(x + i * bw + bw * 0.25, y + h - iso * (h - 10) - 4, bw * 0.5, iso * (h - 10), 2);
   }
-  fill(60); textSize(10); textAlign(RIGHT, TOP);
+  fill(7,14,29); textSize(10); textAlign(RIGHT, TOP);
   text('縦軸: 大きさ(0〜90 phon)  灰=補正なし / 色=補正あり', x + w - 6, y + 6);
 }
 
 function drawNcPanel(x, y, w, h) {
-  fill(255); stroke(220); strokeWeight(1); rect(x, y, w, h, 8);
+  fill(244,244,240); stroke(197,201,211); strokeWeight(1); rect(x, y, w, h, 8);
   const sr = fp.orig.sampleRate, yOf = db => map(db, -110, -10, y + h, y, true);
   textSize(10);
   for (const f of [20, 100, 500, 1000, 5000, 20000]) {
     const gx = xOfFreq(f, x, w);
-    stroke(238); line(gx, y, gx, y + h);
-    noStroke(); fill(120); textAlign(CENTER, TOP); text(fmtHz(f), gx, y + h + 3);
+    stroke(226,228,233); line(gx, y, gx, y + h);
+    noStroke(); fill(129,136,152); textAlign(CENTER, TOP); text(fmtHz(f), gx, y + h + 3);
   }
   for (let d = -100; d <= -20; d += 20) {
-    stroke(238); line(x, yOf(d), x + w, yOf(d));
-    noStroke(); fill(120); textAlign(RIGHT, CENTER); text(d, x - 4, yOf(d));
+    stroke(226,228,233); line(x, yOf(d), x + w, yOf(d));
+    noStroke(); fill(129,136,152); textAlign(RIGHT, CENTER); text(d, x - 4, yOf(d));
   }
   const plotArr = (arr, col, wt) => {
     push(); noFill(); stroke(col); strokeWeight(wt); beginShape();
@@ -1643,11 +1697,11 @@ function drawNcPanel(x, y, w, h) {
     endShape(); pop();
   };
   plotArr(fp.specOrig, color(150, 160, 185), 1.5);
-  plotArr(fp.specClean, color(16, 172, 132), 2);
+  plotArr(fp.specClean, color(9,181,215), 2);
   if (fp.prof0) { plotArr(Array.from(fp.prof0, profDb), color(220, 60, 60), 1.5); }
-  noStroke(); fill(80); textAlign(LEFT, BOTTOM); textSize(12);
+  noStroke(); fill(85,92,109); textAlign(LEFT, BOTTOM); textSize(12);
   text('ノイズ除去のしくみ（平均スペクトル[dBFS]）', x, y - 4);
-  fill(60); textSize(10); textAlign(RIGHT, TOP);
+  fill(7,14,29); textSize(10); textAlign(RIGHT, TOP);
   text('赤=推定した雑音  灰=元  緑=除去後', x + w - 6, y + 6);
 }
 
@@ -1659,7 +1713,7 @@ function niceStep(span) {
 
 function drawTimeCharts(x, y, w, h) {
   const rec = LOG.rec, n = rec.length;
-  noStroke(); fill(80); textAlign(LEFT, BOTTOM); textSize(12);
+  noStroke(); fill(85,92,109); textAlign(LEFT, BOTTOM); textSize(12);
   text('時間軸: 色の変化（上=補正あり / 下=補正なし）と 感じる大きさ[phon]', x, y - 4);
   if (n < 2) {
     fill(150); textAlign(CENTER, CENTER); textSize(13);
@@ -1673,7 +1727,7 @@ function drawTimeCharts(x, y, w, h) {
     bucket[k] = i;
   }
   const rh = 20;
-  noStroke(); fill(238, 242, 248); rect(x, y, w, rh); rect(x, y + rh + 6, w, rh);
+  noStroke(); fill(237,237,232); rect(x, y, w, rh); rect(x, y + rh + 6, w, rh);
   for (let k = 0; k < W; k++) {
     const i = bucket[k];
     if (i < 0) { continue; }
@@ -1681,22 +1735,22 @@ function drawTimeCharts(x, y, w, h) {
     fill(r.ci[0], r.ci[1], r.ci[2]); rect(x + k, y, 1.5, rh);
     fill(r.cf[0], r.cf[1], r.cf[2]); rect(x + k, y + rh + 6, 1.5, rh);
   }
-  fill(60); textSize(9); textAlign(RIGHT, CENTER);
+  fill(7,14,29); textSize(9); textAlign(RIGHT, CENTER);
   text('補正あり', x - 4, y + rh / 2);
   text('補正なし', x - 4, y + rh + 6 + rh / 2);
 
   const ly = y + rh * 2 + 16, lh = Math.max(40, h - rh * 2 - 16 - 18);
-  fill(255); stroke(220); strokeWeight(1); rect(x, ly, w, lh, 6);
+  fill(244,244,240); stroke(197,201,211); strokeWeight(1); rect(x, ly, w, lh, 6);
   for (let p = 0; p <= PHON_MAX; p += 30) {
     const gy = map(p, 0, PHON_MAX, ly + lh, ly);
-    stroke(238); line(x, gy, x + w, gy);
-    noStroke(); fill(120); textSize(9); textAlign(RIGHT, CENTER); text(p, x - 4, gy);
+    stroke(226,228,233); line(x, gy, x + w, gy);
+    noStroke(); fill(129,136,152); textSize(9); textAlign(RIGHT, CENTER); text(p, x - 4, gy);
   }
   const step = niceStep(t1 - t0);
   for (let tt = Math.ceil(t0 / step) * step; tt <= t1; tt += step) {
     const gx = x + (tt - t0) / (t1 - t0) * w;
-    stroke(238); line(gx, ly, gx, ly + lh);
-    noStroke(); fill(120); textSize(10); textAlign(CENTER, TOP); text(fmtTime(tt - t0), gx, ly + lh + 3);
+    stroke(226,228,233); line(gx, ly, gx, ly + lh);
+    noStroke(); fill(129,136,152); textSize(10); textAlign(CENTER, TOP); text(fmtTime(tt - t0), gx, ly + lh + 3);
   }
   const plotKey = (key, col, dash) => {
     push(); noFill(); stroke(col); strokeWeight(2); drawingContext.setLineDash(dash);
@@ -1715,14 +1769,14 @@ function drawTimeCharts(x, y, w, h) {
 }
 
 function drawReportOverlay() {
-  noStroke(); fill(250, 252, 255); rect(0, OVERLAY_Y, width, height - OVERLAY_Y);
+  noStroke(); fill(249,249,246); rect(0, OVERLAY_Y, width, height - OVERLAY_Y);
   const n = LOG.rec.length, dur = n ? LOG.rec[n - 1].t : 0;
-  fill(40); textSize(12); textAlign(LEFT, TOP);
+  fill(7,14,29); textSize(12); textAlign(LEFT, TOP);
   text(`${logSource() ? '● 記録中' : '○ 停止中'}  ${n} 点 / ${dur.toFixed(1)} 秒`, 660, OVERLAY_Y + 4);
-  fill(80); textSize(11);
+  fill(85,92,109); textSize(11);
   text(`校正: 0 dBFS = ${splOffset} dB SPL`, 660, OVERLAY_Y + 22);
 
-  const m = 40, y0 = OVERLAY_Y + 72, availH = height - y0 - 20;
+  const m = 40, y0 = OVERLAY_Y + 36, availH = height - y0 - 20;
   const topH = constrain(availH * 0.46, 130, 300);
   const y1 = y0 + topH + 56, botH = Math.max(120, height - y1 - 26);
   const hasNc = !!(fp.orig && fp.specOrig);
@@ -1743,14 +1797,15 @@ function reportSnapshotIfNeeded() {
 }
 
 function initReportUI() {
+  UI_CTX = 'report';
   const defs = [
-    ['💾 時系列CSV', '#10ac84', () => downloadText('wavelab_timeseries_' + stamp() + '.csv', buildTimeSeriesCsv())],
-    ['💾 スペクトルCSV', '#4a69bd', () => downloadText('wavelab_spectrum_' + stamp() + '.csv', buildSpectrumCsv())],
-    ['🖼 レポート画像', '#8e44ad', () => { reportSnap = true; }],
-    ['🗑 記録をリセット', '#778ca3', () => { resetLog(); }]
+    ['時系列CSV', '#10ac84', () => downloadText('wavelab_timeseries_' + stamp() + '.csv', buildTimeSeriesCsv())],
+    ['スペクトルCSV', '#4a69bd', () => downloadText('wavelab_spectrum_' + stamp() + '.csv', buildSpectrumCsv())],
+    ['レポート画像', '#8e44ad', () => { reportSnap = true; }],
+    ['記録をリセット', '#778ca3', () => { resetLog(); }]
   ];
   defs.forEach((d, i) => {
-    const b = createButton(d[0]);
+    const b = hBtn(d[0]);
     b.position(20 + i * 160, OVERLAY_Y + 2);
     styleButton(b, d[1]);
     b.mousePressed(d[2]);
@@ -1958,13 +2013,13 @@ function devColor(c) {                                               // ずれ�
 }
 function readableOn(c) { return (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) > 150 ? [30, 40, 60] : [255, 255, 255]; }
 function panelBox(x, y, w, h, title) {
-  fill(255); stroke(220); strokeWeight(1); rect(x, y, w, h, 12);
-  noStroke(); fill(80); textSize(12); textAlign(LEFT, BOTTOM);
+  fill(244,244,240); stroke(197,201,211); strokeWeight(1); rect(x, y, w, h, 12);
+  noStroke(); fill(85,92,109); textSize(12); textAlign(LEFT, BOTTOM);
   text(title, x, y - 4);
 }
 
 function drawHueLegend(x, y, w, h) {
-  noStroke(); fill(80); textAlign(LEFT, BOTTOM); textSize(10);
+  noStroke(); fill(85,92,109); textAlign(LEFT, BOTTOM); textSize(10);
   const title = HUE.mode === 'scale' ? '色の対応: 音階（ドから次のドで色が一周。オクターブ違いは同じ色）'
     : (HUE.mode === 'free' ? '色の対応: 好きなHzの範囲（' + HUE.fLow + '〜' + HUE.fHigh + ' Hz）' : '色の対応: 可聴域（低い音=赤 → 高い音=紫）');
   text(title, x, y - 2);
@@ -1972,7 +2027,7 @@ function drawHueLegend(x, y, w, h) {
     const bw = w / 12;
     for (let i = 0; i < 12; i++) {
       noStroke(); fill(hsbColor(i * 30, 80, 95)); rect(x + i * bw, y, bw - 1, h);
-      fill(30); textAlign(CENTER, CENTER); textSize(9); text(NOTE_JP[i], x + i * bw + bw / 2, y + h / 2);
+      fill(7,14,29); textAlign(CENTER, CENTER); textSize(9); text(NOTE_JP[i], x + i * bw + bw / 2, y + h / 2);
     }
   } else {
     noStroke();
@@ -1980,12 +2035,12 @@ function drawHueLegend(x, y, w, h) {
       const f = FMIN * Math.pow(FMAX / FMIN, px / w);
       fill(hsbColor(hueForFreq(f), 80, 95)); rect(x + px, y, 2, h);
     }
-    fill(30); textSize(9); textAlign(CENTER, TOP);
+    fill(7,14,29); textSize(9); textAlign(CENTER, TOP);
     for (const f of [100, 1000, 10000]) { text(fmtHz(f), xOfFreq(f, x, w), y + h + 1); }
   }
   if (hueValid && liveActive()) {
     const mx = HUE.mode === 'scale' ? x + w * hueStripPos : xOfFreq(hueSrcFreq, x, w);
-    fill(30); noStroke(); triangle(mx, y - 1, mx - 5, y - 9, mx + 5, y - 9);
+    fill(7,14,29); noStroke(); triangle(mx, y - 1, mx - 5, y - 9, mx + 5, y - 9);
   }
 }
 
@@ -2004,12 +2059,12 @@ function drawTunerPanel(x, y, w, h) {
   text(live ? f0Hz.toFixed(1) + ' Hz' : '音を出してみよう', cx, cy + R * 0.45);
 
   const gw = Math.min(w - 40, 420), gx = cx - gw / 2, gy = cy + R + 54;       // ずれメーター（-50〜+50 cent）
-  noStroke(); fill(235, 240, 248); rect(gx, gy, gw, 16, 8);
+  noStroke(); fill(237,237,232); rect(gx, gy, gw, 16, 8);
   fill(60, 180, 100, 90); rect(gx + gw * 0.4, gy, gw * 0.2, 16);
   for (const t of [-50, -25, 0, 25, 50]) {
     const tx = gx + (t + 50) / 100 * gw;
     stroke(120); strokeWeight(1); line(tx, gy - 3, tx, gy + 19);
-    noStroke(); fill(100); textSize(10); textAlign(CENTER, TOP); text(t, tx, gy + 22);
+    noStroke(); fill(85,92,109); textSize(10); textAlign(CENTER, TOP); text(t, tx, gy + 22);
   }
   fill(110); textSize(10); textAlign(LEFT, TOP); text('← 低い', gx, gy + 36);
   textAlign(RIGHT, TOP); text('高い →', gx + gw, gy + 36);
@@ -2020,7 +2075,7 @@ function drawTunerPanel(x, y, w, h) {
   }
   const msg = !live ? '音を出すと、ずれが表示されます'
     : (Math.abs(noteInfo.cents) <= 10 ? 'ぴったり！' : (noteInfo.cents < 0 ? 'すこし低い' : 'すこし高い'));
-  noStroke(); fill(40); textAlign(CENTER, TOP); textSize(Math.max(14, R * 0.26));
+  noStroke(); fill(7,14,29); textAlign(CENTER, TOP); textSize(Math.max(14, R * 0.26));
   text(msg, cx, gy + 56);
   if (live) {
     fill(90); textSize(11);
@@ -2048,30 +2103,30 @@ function drawVoicePanel(x, y, w, h) {
   let yy = y + 14;
   rows.forEach((r, i) => {
     noStroke(); fill(110); textSize(11); textAlign(LEFT, CENTER); text(r[0], x + 16, yy + rh / 2);
-    fill(30); textSize(13); textStyle(BOLD); textAlign(RIGHT, CENTER);
-    if (i === 7 && act && hueValid) { fill(currentColor.r, currentColor.g, currentColor.b); stroke(255); strokeWeight(1.5); circle(x + w - 16 - 70, yy + rh / 2, rh * 0.7); noStroke(); fill(30); }
+    fill(7,14,29); textSize(13); textStyle(BOLD); textAlign(RIGHT, CENTER);
+    if (i === 7 && act && hueValid) { fill(currentColor.r, currentColor.g, currentColor.b); stroke(255); strokeWeight(1.5); circle(x + w - 16 - 70, yy + rh / 2, rh * 0.7); noStroke(); fill(7,14,29); }
     text(r[1], x + w - 16, yy + rh / 2);
     textStyle(NORMAL);
     stroke(240); strokeWeight(1); line(x + 12, yy + rh, x + w - 12, yy + rh);
     yy += rh;
   });
-  noStroke(); fill(80); textSize(11); textAlign(LEFT, TOP);
+  noStroke(); fill(85,92,109); textSize(11); textAlign(LEFT, TOP);
   text('倍音の強さ（最大の倍音を0 dBとした相対値）', x + 16, yy + 10);
   const by0 = yy + 28, by1 = y + h - 34, bh = by1 - by0;
   if (bh > 36) {
     const n = 8, bw = (w - 32) / n;
     for (let i = 0; i < n; i++) {
       const hm = harm[i], bx = x + 16 + i * bw;
-      noStroke(); fill(238, 242, 248); rect(bx + 3, by0, bw - 6, bh, 4);
+      noStroke(); fill(237,237,232); rect(bx + 3, by0, bw - 6, bh, 4);
       if (hm) {
         const v = map(hm.db, -40, 0, 0.04, 1, true);
         fill(hsbColor(hueForFreq(hm.hz), 80, 95)); rect(bx + 3, by1 - v * bh, bw - 6, v * bh, 4);
-        fill(60); textSize(9); textAlign(CENTER, BOTTOM); text(hm.db.toFixed(0), bx + bw / 2, by1 - v * bh - 1);
+        fill(7,14,29); textSize(9); textAlign(CENTER, BOTTOM); text(hm.db.toFixed(0), bx + bw / 2, by1 - v * bh - 1);
       }
-      fill(80); textSize(10); textAlign(CENTER, TOP); text('H' + (i + 1), bx + bw / 2, by1 + 3);
+      fill(85,92,109); textSize(10); textAlign(CENTER, TOP); text('H' + (i + 1), bx + bw / 2, by1 + 3);
     }
   }
-  fill(120); textSize(10); textAlign(LEFT, BOTTOM);
+  fill(129,136,152); textSize(10); textAlign(LEFT, BOTTOM);
   text('高さ=F0 / 明るさ=重心 / 声の個性=倍音のバランス', x + 16, y + h - 8);
 }
 
@@ -2083,7 +2138,7 @@ function drawHarmSpectrum(x, y, w, h) {
   stroke(30, 30, 30, 150); strokeWeight(1);
   for (const hm of harm) { const gx = xOfFreq(hm.hz, x, w); line(gx, y + 18, gx, y + h); }
   pop();
-  noStroke(); fill(30); textSize(10); textAlign(CENTER, TOP);
+  noStroke(); fill(7,14,29); textSize(10); textAlign(CENTER, TOP);
   for (const hm of harm) { text('H' + hm.n, xOfFreq(hm.hz, x, w), y + 5); }
 }
 
@@ -2092,7 +2147,7 @@ function drawPitchTrace(x, y, w, h) {
   const yOf = c => map(constrain(c, -50, 50), -50, 50, y + h - 6, y + 6);
   noStroke(); fill(60, 180, 100, 60); rect(x, yOf(10), w, yOf(-10) - yOf(10));
   stroke(60, 180, 100); strokeWeight(1); line(x, yOf(0), x + w, yOf(0));
-  noStroke(); fill(120); textSize(9); textAlign(LEFT, CENTER);
+  noStroke(); fill(129,136,152); textSize(9); textAlign(LEFT, CENTER);
   text('+50', x + 4, yOf(50) + 4); text('0', x + 4, yOf(0)); text('-50', x + 4, yOf(-50) - 4);
   const now = lastTraceT, span = 10;
   let prev = null;
@@ -2106,8 +2161,8 @@ function drawPitchTrace(x, y, w, h) {
 }
 
 function drawClassOverlay() {
-  noStroke(); fill(250, 252, 255); rect(0, OVERLAY_Y, width, height - OVERLAY_Y);
-  const y0 = OVERLAY_Y + 46, m = 28, availH = height - y0 - 14;
+  noStroke(); fill(249,249,246); rect(0, OVERLAY_Y, width, height - OVERLAY_Y);
+  const y0 = OVERLAY_Y + 22, m = 28, availH = height - y0 - 14;
   const histH = constrain(availH * 0.24, 80, 140);
   const topH = Math.max(200, availH - histH - 34);
   const cols = width >= 1000 ? 3 : 2, pw = (width - m * (cols + 1)) / cols;
@@ -2120,8 +2175,8 @@ function drawClassOverlay() {
 
 // ================= 15) ページ構成・設定ページ・環境ノイズ除去・校正 =================
 // 画面の上には「ページの切り替え(1行)」と「音の入力・再生(1行)」だけを置き、
-// それ以外の調整はすべて ⚙ 設定ページにまとめる。
-const PAGES = [['home', '🏠 ホーム'], ['graph', '📈 グラフ'], ['report', '🗂 記録'], ['class', '🎓 授業'], ['settings', '⚙ 設定']];
+// それ以外の調整はすべて 設定ページにまとめる。
+const PAGES = [['home', 'ホーム'], ['graph', 'グラフ'], ['report', '記録'], ['class', '授業'], ['settings', '設定']];
 const MODE_OPTS = [['色の対応: 可聴域（低い音=赤 → 高い音=紫）', 'audible'], ['色の対応: 音階（ドレミ → 色相環）', 'scale'], ['色の対応: 好きなHzの範囲', 'free']];
 let page = 'home';
 const tabButtons = {};
@@ -2137,8 +2192,8 @@ function drawToast() {
   if (millis() > toastUntil) { return; }
   push(); textSize(14); textStyle(BOLD);
   const w = textWidth(toastText) + 44, y = height - 70;
-  noStroke(); fill(43, 58, 85, 235); rect(width / 2 - w / 2, y, w, 40, 20);
-  fill(255); textAlign(CENTER, CENTER); text(toastText, width / 2, y + 20); pop();
+  noStroke(); fill(7,14,29, 235); rect(width / 2 - w / 2, y, w, 40, 20);
+  fill(244,244,240); textAlign(CENTER, CENTER); text(toastText, width / 2, y + 20); pop();
 }
 
 function reg(el, pg, cond) { uiReg.push({ el, page: pg, cond }); return el; }
@@ -2148,30 +2203,24 @@ function applyVisibility() {
     if (on) { r.el.show(); } else { r.el.hide(); }
   }
 }
-function styleTab(b, active) {
-  b.style('background-color', active ? '#2e86de' : '#8395a7');
-  b.style('width', '130px');
-  b.style('font-size', '13px');
-}
+let lastDetail = 'graph';
 function setPage(p) {
   page = p;
   showCharts = p === 'graph';
   showReport = p === 'report';
   showClass = p === 'class';
-  for (const id of Object.keys(tabButtons)) { styleTab(tabButtons[id], id === p); }
+  const detail = showCharts || showReport || showClass;
+  if (detail) { lastDetail = p; }
+  document.querySelectorAll('#mainnav button').forEach(b => {
+    b.classList.toggle('active', b.dataset.page === p || (b.dataset.group === 'detail' && detail));
+  });
+  document.querySelectorAll('#subnav button').forEach(b => { b.classList.toggle('active', b.dataset.page === p); });
+  showEl('subnav', detail, 'flex');
+  showEl('slot-class', p === 'class', 'flex');
+  showEl('slot-report', p === 'report', 'flex');
+  showEl('panel-settings', p === 'settings', 'block');
   applyVisibility();
-}
-function layoutTopBars() {                                        // 入力・再生の1行（y=56）
-  micButton.position(20, 56);
-  noiseButton.position(180, 56);
-  loadButton.position(340, 56);
-  playButton.position(500, 56);
-  nrToggleButton.position(660, 56);
-  envNrButton.position(820, 56);
-}
-function settingsX2() { return Math.max(520, Math.floor(width / 2) + 10); }
-function layoutSettings() {
-  for (const d of settingsLayout) { d.el.position(d.col === 1 ? 30 : settingsX2(), SY + d.y); }
+  fitCanvas();
 }
 
 // ---------- 色の対応（周波数 → 色）の設定 ----------
@@ -2234,7 +2283,7 @@ function applyEnvNoise(spec) {
 }
 function onEnvToggle() {
   if (!envNoise.profile) {
-    toast('まず ⚙設定 で「環境ノイズを登録」してください');
+    toast('まず 設定 で「環境ノイズを登録」してください');
     setPage('settings');
     return;
   }
@@ -2242,7 +2291,7 @@ function onEnvToggle() {
 }
 let lastEnvLabel = '';
 function syncEnvButton() {
-  const l = envNoise.enabled ? '🌿 環境ノイズ除去: ON' : (envNoise.profile ? '🌿 環境ノイズ除去: OFF' : '🌿 環境ノイズ: 未登録');
+  const l = envNoise.enabled ? '環境ノイズ除去: ON' : (envNoise.profile ? '環境ノイズ除去: OFF' : '環境ノイズ: 未登録');
   if (l !== lastEnvLabel) {
     envNrButton.html(l);
     envNrButton.style('background-color', envNoise.enabled ? '#10ac84' : '#8395a7');
@@ -2255,7 +2304,7 @@ const calib = { kind: '', label: '', t0: 0, frames: 0, sumP: null, freqs: [], lv
 function startCalib(kind) {
   const ok = kind === 'noise' ? micActive : (micActive || noiseActive || fp.playing);
   if (!ok) {
-    toast(kind === 'noise' ? '先に「🎤 マイク開始」を押してください' : '先にマイク・テスト音・ファイル再生のどれかを始めてください');
+    toast(kind === 'noise' ? '先に「マイク開始」を押してください' : '先にマイク・テスト音・ファイル再生のどれかを始めてください');
     return;
   }
   calib.kind = kind;
@@ -2323,9 +2372,9 @@ function setFftSize(n) {
 // ---------- 設定ページの部品づくり ----------
 function sReg(el, col, y, cond) { settingsLayout.push({ el, col, y }); reg(el, 'settings', cond); return el; }
 function sSlider(col, y, label, mn, mx, val, step, fmt, onChange, cond) {
-  const d = createDiv('');
+  const d = hDiv('');
   d.style('font-size', '12px'); d.style('color', '#2b3a55');
-  const s = createSlider(mn, mx, val, step);
+  const s = hSlider(mn, mx, val, step);
   s.style('width', '280px');
   const upd = () => d.html(label + ': ' + fmt(Number(s.value())));
   s.input(() => { onChange(Number(s.value())); upd(); });
@@ -2334,7 +2383,7 @@ function sSlider(col, y, label, mn, mx, val, step, fmt, onChange, cond) {
   return { s, d, upd };
 }
 function sSelect(col, y, opts, sel, w, onChange, cond) {
-  const s = createSelect();
+  const s = hSelect();
   for (const o of opts) { s.option(o[0], o[1]); }
   s.selected(sel);
   s.style('width', w + 'px');
@@ -2342,7 +2391,7 @@ function sSelect(col, y, opts, sel, w, onChange, cond) {
   return sReg(s, col, y, cond);
 }
 function sButton(col, y, label, color, w, onClick) {
-  const b = createButton(label);
+  const b = hBtn(label);
   styleButton(b, color);
   b.style('width', w + 'px');
   b.mousePressed(onClick);
@@ -2351,6 +2400,7 @@ function sButton(col, y, label, color, w, onClick) {
 const isFree = () => HUE.mode === 'free';
 
 function initSettingsUI() {
+  UI_CTX = 'set-color';
   // ① 色の対応
   settingsCtl.mode = sSelect(1, 26, MODE_OPTS, HUE.mode, 360, v => setMode(v));
   settingsCtl.preset = sSelect(1, 60, [['プリセットを選ぶ…', ''], ['ティンホイッスル 500〜2500 Hz（F0）', 'whistle'], ['声 80〜500 Hz（F0）', 'voice'],
@@ -2362,59 +2412,64 @@ function initSettingsUI() {
   settingsCtl.h0 = sSlider(1, 184, '開始の色相（0°=赤）', 0, 360, HUE.h0, 1, v => v + '°', v => { HUE.h0 = v; }, isFree);
   settingsCtl.span = sSlider(1, 228, '色相の幅（270°=赤〜紫）', 30, 360, HUE.span, 1, v => v + '°', v => { HUE.span = v; }, isFree);
   settingsCtl.src = sSelect(1, 274, [['色を決める音: スペクトル重心（音の明るさ）', 'centroid'], ['色を決める音: F0（基本周波数・音の高さ）', 'f0']], HUE.src, 360, v => { HUE.src = v; }, isFree);
-  sButton(1, 310, '🎯 音域を自動で合わせる（3秒）', '#e17055', 250, () => startCalib('range'));
+  sButton(1, 310, '音域を自動で合わせる（3秒）', '#e17055', 250, () => startCalib('range'));
+  UI_CTX = 'set-volume';
   // ② 音量・校正
   settingsCtl.spl = sSlider(1, 424, '音圧の校正（0 dBFS = ○○ dB SPL）', 40, 140, splOffset, 1, v => String(v), v => { splOffset = v; });
   splSlider = settingsCtl.spl.s;
   settingsCtl.vol = sSlider(1, 468, 'スピーカー音量（再生・テスト音）', 0, 1, 0.6, 0.01, v => Math.round(v * 100) + '%', v => setOutputVolume(v));
   masterVolSlider = settingsCtl.vol.s;
-  sButton(1, 512, '🎚 音量を自動で合わせる（3秒・大きめの声）', '#4a69bd', 330, () => startCalib('level'));
+  sButton(1, 512, '音量を自動で合わせる（3秒・大きめの声）', '#4a69bd', 330, () => startCalib('level'));
 
+  UI_CTX = 'set-noise';
   // ③ ノイズ除去
   const nr = sSlider(2, 46, '除去の強さ（読み込んだ録音）', 0.5, 4, 1.8, 0.1, v => v.toFixed(1), () => {});
   nrSlider = nr.s;
   nrSlider.elt.addEventListener('change', () => { if (fp.orig) { runDenoise(); } });
   nrSelect = sSelect(2, 94, [['雑音の取り方: 自動（静かな部分）', 'auto'], ['雑音の取り方: 冒頭0.5秒', 'head']], 'auto', 300, () => { if (fp.orig) { runDenoise(); } });
-  sButton(2, 154, '🌿 環境ノイズを登録（3秒・静かに）', '#10ac84', 270, () => startCalib('noise'));
-  sButton(2, 154, '🗑 削除', '#778ca3', 90, () => { envNoise.profile = null; envNoise.profBytes = null; envNoise.enabled = false; toast('環境ノイズの登録を削除しました'); });
+  sButton(2, 154, '環境ノイズを登録（3秒・静かに）', '#10ac84', 270, () => startCalib('noise'));
+  sButton(2, 154, '削除', '#778ca3', 90, () => { envNoise.profile = null; envNoise.profBytes = null; envNoise.enabled = false; toast('環境ノイズの登録を削除しました'); });
   settingsLayout[settingsLayout.length - 1].dx = 280;
   settingsCtl.envS = sSlider(2, 196, '環境ノイズ除去の強さ（マイク入力）', 1, 3, envNoise.strength, 0.1, v => v.toFixed(1), v => { envNoise.strength = v; });
+  UI_CTX = 'set-display';
   // ④ 表示
   sSelect(2, 340, [['FFTの細かさ: 標準（約47Hz刻み）', '1024'], ['FFTの細かさ: 高（約12Hz刻み）', '4096'], ['FFTの細かさ: 最高（約6Hz刻み）', '8192']], '4096', 300, v => setFftSize(Number(v)));
 }
-function layoutSettingsDx() {
-  for (const d of settingsLayout) { d.el.position((d.col === 1 ? 30 : settingsX2()) + (d.dx || 0), SY + d.y); }
-}
-
 function drawSettingsPage() {
-  noStroke(); fill(250, 252, 255); rect(0, OVERLAY_Y, width, height - OVERLAY_Y);
-  const x1 = 30, x2 = settingsX2();
-  const head = (t, x, y) => { noStroke(); fill(30, 50, 90); textSize(15); textStyle(BOLD); textAlign(LEFT, TOP); text(t, x, SY + y); textStyle(NORMAL); };
-  const note = (t, x, y) => { noStroke(); fill(110); textSize(11); textAlign(LEFT, TOP); text(t, x, SY + y); };
-  head('① 色に対応させる周波数（Hz）', x1, 0);
-  drawHueLegend(x1, SY + 368, 360, 18);
-  head('② 音量・校正', x1, 394);
-  note('※ 画面のphonは相対値です（マイクの感度で変わります）', x1, 556);
-  head('③ ノイズ除去', x2, 0);
-  note('音声ファイル（📂で読み込んだ録音）', x2, 24);
-  note('マイク入力（教室や外の環境ノイズ）', x2, 134);
-  const st = envNoise.profile ? (envNoise.enabled ? '登録済み・除去 ON' : '登録済み・除去 OFF（上の🌿ボタンで切り替え）') : '未登録（マイクを開始 → 静かにして登録）';
-  note('環境ノイズ: ' + st, x2, 240);
+  noStroke(); fill(249,249,246); rect(0, OVERLAY_Y, width, height - OVERLAY_Y);
+  if (width < 760) { return; }                          // 狭い画面では、HTMLの設定パネルが全面を覆う
+  const x = 404, w = width - x - 24, y = OVERLAY_Y + 30;
+  fill(7,14,29); textSize(15); textStyle(BOLD); textAlign(LEFT, TOP);
+  text('プレビュー（音を出しながら、設定を変えてみよう）', x, y - 6);
+  textStyle(NORMAL);
+  const col = (liveActive() && hueValid) ? currentColor : { r: 230, g: 235, b: 240 };
+  fill(col.r, col.g, col.b); stroke(255); strokeWeight(3); circle(x + 56, y + 84, 112);
+  noStroke(); fill(7,14,29); textSize(13); textAlign(LEFT, TOP);
+  const lines = [
+    '色を決める音: ' + hueSourceLabel(),
+    'いまの周波数: ' + (hueSrcFreq > 0 ? Math.round(hueSrcFreq) + ' Hz' : '—'),
+    '色相 ' + (hueValid && liveActive() ? currentHue.toFixed(0) + '°' : '—') + '　彩度 ' + currentSaturation.toFixed(0) + '%　明度 ' + briFromPhon(perceivedLoudness * PHON_MAX).toFixed(0) + '%',
+    '入力レベル: ' + (-100 + dominantAmplitude * 70).toFixed(0) + ' dBFS　（校正値 ' + splOffset + '）',
+    '環境ノイズ除去: ' + (envNoise.profile ? (envNoise.enabled ? 'ON' : '登録済み・OFF') : '未登録')
+  ];
+  lines.forEach((l, i) => text(l, x + 140, y + 30 + i * 22));
   if (isCalibrating) {
     const p = constrain((millis() - calib.t0) / calibrationDuration, 0, 1);
-    noStroke(); fill(225, 232, 245); rect(x2, SY + 262, 280, 10, 5);
-    fill(46, 134, 222); rect(x2, SY + 262, 280 * p, 10, 5);
-    note('計測中: ' + calib.label + '（' + Math.round(p * 100) + '%）', x2, 278);
+    fill(197,201,211); rect(x, y + 152, Math.min(w, 520), 10, 5);
+    fill(36,72,255); rect(x, y + 152, Math.min(w, 520) * p, 10, 5);
+    fill(7,14,29); textSize(12); text('計測中: ' + calib.label + '（' + Math.round(p * 100) + '%）', x, y + 168);
   }
-  head('④ 表示', x2, 316);
-  note('低い音を細かく見たいときは「高」「最高」。反応は少しゆっくりになります', x2, 372);
+  drawHueLegend(x, y + 214, Math.min(w, 520), 26);
+  const ch = constrain(height - (y + 290) - 40, 0, 260);
+  if (ch >= 90) { drawFFTChart(x, y + 290, w, ch); }
 }
 
 // ---------- 授業ページの選択部品 ----------
 function initClassUI() {
+  UI_CTX = 'class';
   const y = OVERLAY_Y + 6;
   const mk = (x, w, opts, sel, fn) => {
-    const s = createSelect();
+    const s = hSelect();
     for (const o of opts) { s.option(o[0], o[1]); }
     s.selected(sel); s.position(x, y); s.style('width', w + 'px');
     s.changed(() => fn(s.value()));
@@ -2429,19 +2484,29 @@ function initClassUI() {
 }
 
 function initPageUI() {
-  PAGES.forEach((p, i) => {
-    const b = createButton(p[1]);
-    b.position(20 + i * 140, 12);
-    styleButton(b, '#8395a7');
-    b.mousePressed(() => setPage(p[0]));
-    tabButtons[p[0]] = b;
-  });
-  envNrButton = createButton('🌿 環境ノイズ: 未登録');
+  UI_CTX = 'sources';
+  envNrButton = hBtn('環境ノイズ: 未登録');
   styleButton(envNrButton, '#8395a7');
   envNrButton.mousePressed(onEnvToggle);
-  layoutTopBars();
-  layoutSettingsDx();
+  // 並び順: マイク / ファイル / テスト音 ｜ 再生 / ノイズ除去 / 環境ノイズ
+  [[micButton, 1], [loadButton, 2], [noiseButton, 3], [playButton, 4], [nrToggleButton, 5], [envNrButton, 6]].forEach(o => o[0].style('order', String(o[1])));
+  // 上のナビ（体験する / くわしく見る / 設定）
+  document.querySelectorAll('#mainnav button, #subnav button').forEach(b => {
+    b.addEventListener('click', () => { setPage(b.dataset.group === 'detail' ? lastDetail : b.dataset.page); });
+  });
   setPage('home');
+  syncSourceBar();                                   // 最初から、必要なボタンだけ出す
+}
+
+// 状況に応じて、いま必要なボタンだけを出す（再生・ノイズ除去は、ファイルを読み込んだあと）
+const srcVis = {};
+function setVis(key, btn, on) {
+  if (srcVis[key] !== on) { srcVis[key] = on; if (on) { btn.show(); } else { btn.hide(); } }
+}
+function syncSourceBar() {
+  setVis('play', playButton, !!fp.orig);
+  setVis('nr', nrToggleButton, !!fp.orig);
+  setVis('env', envNrButton, micActive || !!envNoise.profile);
 }
 
 // ================= 16) 画面の描画（整理した版） =================
@@ -2463,12 +2528,12 @@ function specBarValue(arr, f0, f1, nyq, div) {
 }
 
 function drawFFTChart(x, y, w, h) {
-  fill(255); stroke(220); strokeWeight(1); rect(x, y, w, h, 8);
+  fill(244,244,240); stroke(197,201,211); strokeWeight(1); rect(x, y, w, h, 8);
   textSize(10);
   for (const f of [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]) {
     const gx = xOfFreq(f, x, w);
-    stroke(238); line(gx, y, gx, y + h);
-    noStroke(); fill(120); textAlign(CENTER, TOP); text(fmtHz(f), gx, y + h + 3);
+    stroke(226,228,233); line(gx, y, gx, y + h);
+    noStroke(); fill(129,136,152); textAlign(CENTER, TOP); text(fmtHz(f), gx, y + h + 3);
   }
   const N = 64, len = spectrumData.length;
   const nyq = typeof sampleRate === 'function' ? sampleRate() / 2 : 22050;
@@ -2490,20 +2555,20 @@ function drawFFTChart(x, y, w, h) {
     for (let i = 0; i < N; i++) { const [f0, f1] = barF(i); vertex(x + (i + 0.5) * (w / N), y + h - 4 - specBarValue(envNoise.profBytes, f0, f1, nyq, 1) / 255 * (h - 12)); }
     endShape();
     pop();
-    noStroke(); fill(80); textSize(10); textAlign(LEFT, TOP);
+    noStroke(); fill(85,92,109); textSize(10); textAlign(LEFT, TOP);
     text('灰=除去前 / 赤=登録した環境ノイズ', x + 8, y + 6);
   }
   const ref = contourSPL(1000, 40);                                 // 耳の感度カーブ
-  noFill(); stroke(30); strokeWeight(2); beginShape();
+  noFill(); stroke(7,14,29); strokeWeight(2); beginShape();
   for (let i = 0; i <= 100; i++) {
     const f = FMIN * Math.pow(12500 / FMIN, i / 100);
     const sens = map(ref - contourSPL(f, 40), -60, 15, 0, 1, true);
     vertex(xOfFreq(f, x, w), y + h - 4 - sens * (h - 12));
   }
   endShape();
-  fill(80); noStroke(); textAlign(LEFT, BOTTOM); textSize(12);
+  fill(85,92,109); noStroke(); textAlign(LEFT, BOTTOM); textSize(12);
   text('FFTスペクトル（対数周波数）', x, y - 4);
-  fill(30); textAlign(RIGHT, TOP); textSize(10);
+  fill(7,14,29); textAlign(RIGHT, TOP); textSize(10);
   text('━ 耳の感度 (40 phon)', x + w - 6, y + 6);
 }
 
@@ -2515,32 +2580,35 @@ function drawSpectrumBar() {
     line(barX + i, barY, barX + i, barY + barHeight);
   }
   colorMode(RGB, 255);
-  noFill(); stroke(180); rect(barX, barY, barWidth, barHeight, 4);
+  noFill(); stroke(197,201,211); rect(barX, barY, barWidth, barHeight, 4);
   if (hueValid && liveActive()) {
     const markerX = barX + barWidth * hueStripPos;
-    fill(30); noStroke(); triangle(markerX, barY - 2, markerX - 6, barY - 10, markerX + 6, barY - 10);
+    fill(7,14,29); noStroke(); triangle(markerX, barY - 2, markerX - 6, barY - 10, markerX + 6, barY - 10);
   }
-  fill(80); noStroke(); textSize(11);
+  fill(85,92,109); noStroke(); textSize(11);
   textAlign(LEFT, BOTTOM); text('色の対応: ' + hueSourceLabel(), barX, barY - 12);
   textAlign(LEFT, TOP); text(hueStripLeft(), barX, barY + barHeight + 5);
   textAlign(RIGHT, TOP); text(hueStripRight(), barX + barWidth, barY + barHeight + 5);
 }
 
 function drawFrequencyGraph() {
+  if (width < 860 || height < 440) { return; }          // せまい枠・スマホでは、円と色の帯だけにする
   const w = 380, h = 150;
   drawFFTChart(width - w - 20, height - h - 140, w, h);
 }
 
 function drawInfoText() {
-  const x = width - 280, y = 140;
-  fill(40); noStroke(); textSize(13); textStyle(BOLD); textAlign(LEFT, TOP);
+  if (width < 860) { return; }
+  const x = width - 280, y = 58;
+  fill(7,14,29); noStroke(); textSize(13); textStyle(BOLD); textAlign(LEFT, TOP);
   text('つかいかた', x, y); textStyle(NORMAL);
-  fill(100); textSize(11);
-  text('1. 「🎤 マイク開始」を押して、声や楽器の音を出す\n2. 円の色と大きさが、音に合わせて変わる\n3. 上のタブで「グラフ」「授業」「記録」を見る\n4. ⚙設定で、色に対応させるHzやノイズ除去を調整', x, y + 22);
+  fill(85,92,109); textSize(11);
+  text('1. 「マイク開始」を押して、声や楽器の音を出す\n2. 円の色と大きさが、音に合わせて変わる\n3. 上のタブで「グラフ」「授業」「記録」を見る\n4. 設定で、色に対応させるHzやノイズ除去を調整', x, y + 22);
 }
 
 function createUIButtons() {
-  micButton = createButton('🎤 マイク開始');
+  UI_CTX = 'sources';
+  micButton = hBtn('マイク開始');
   styleButton(micButton, '#4a69bd');
   micButton.mousePressed(async () => {
     try {
@@ -2550,21 +2618,21 @@ function createUIButtons() {
         fpPause();
         await audioProcessor.startMicrophone();
         micActive = true;
-        micButton.html('🎤 マイク停止');
+        micButton.html('マイク停止');
       } else {
         audioProcessor.stopMicrophone();
         micActive = false;
-        micButton.html('🎤 マイク開始');
+        micButton.html('マイク開始');
       }
     } catch (err) {
       console.error('Microphone start failed:', err);
       micActive = false;
-      micButton.html('🎤 マイク開始');
+      micButton.html('マイク開始');
       alert('マイクを開始できませんでした。ブラウザのマイク許可とHTTPS/localhostでの実行を確認してください。\n' + (err && err.message ? err.message : err));
     }
   });
 
-  noiseButton = createButton('🔊 スイープ音テスト');
+  noiseButton = hBtn('スイープ音テスト');
   styleButton(noiseButton, '#4a69bd');
   noiseButton.mousePressed(async () => {
     await ensureUserAudioStarted();
@@ -2573,6 +2641,7 @@ function createUIButtons() {
 }
 
 function initFileDenoiseUI() {
+  UI_CTX = 'sources';
   fileInputEl = document.createElement('input');
   fileInputEl.type = 'file';
   fileInputEl.accept = 'audio/*,.wav,.mp3,.m4a,.ogg,.flac,.aac';
@@ -2591,15 +2660,15 @@ function initFileDenoiseUI() {
     if (f) loadAudioFile(f);
   });
 
-  loadButton = createButton('📂 音声ファイル');
+  loadButton = hBtn('音声ファイル');
   styleButton(loadButton, '#e17055');
   loadButton.mousePressed(() => fileInputEl.click());
 
-  playButton = createButton('▶ 再生');
+  playButton = hBtn('再生');
   styleButton(playButton, '#4a69bd');
   playButton.mousePressed(onPlayPressed);
 
-  nrToggleButton = createButton('🔇 ノイズ除去: ON');
+  nrToggleButton = hBtn('ノイズ除去: ON');
   styleButton(nrToggleButton, '#10ac84');
   nrToggleButton.mousePressed(onNrToggle);
 }
