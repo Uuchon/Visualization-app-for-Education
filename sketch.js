@@ -648,7 +648,7 @@ function drawContourChart(x, y, w, h) {
   fill(85,92,109);
   textAlign(LEFT, BOTTOM);
   textSize(12);
-  text('等ラウドネス曲線 (ISO 226:2003)  縦: 音圧レベル[dB SPL]', x, y - 4);
+  text(w < 420 ? '等ラウドネス曲線 (ISO 226)' : '等ラウドネス曲線 (ISO 226:2003)  縦: 音圧レベル[dB SPL]', x, y - 6);
 
   for (const ph of [10, 20, 30, 40, 50, 60, 70, 80, 90]) {
     stroke(lerpColor(color(130, 180, 240), color(20, 30, 110), ph / PHON_MAX));
@@ -731,7 +731,7 @@ function drawColorMap(x, y, w, h) {
   fill(85,92,109);
   textAlign(LEFT, BOTTOM);
   textSize(12);
-  text('色の対応マップ  横: 周波数(→色相)  縦: 大きさ[phon](→明度)', x, y - 4);
+  text(w < 480 ? '色の対応マップ（横:周波数 縦:phon）' : '色の対応マップ  横: 周波数(→色相)  縦: 大きさ[phon](→明度)', x, y - 6);
 
   drawColorMapTrail(x, y, w, h);
 
@@ -828,12 +828,13 @@ function drawLoudnessChartsOverlay() {
 
   fill(85,92,109);
   textSize(11);
-  text(`校正: 0 dBFS = ${splOffset} dB SPL`, 20, OVERLAY_Y + 32);
+  const calTxt = `校正: 0 dBFS = ${splOffset} dB SPL`;
+  text(calTxt, 20, OVERLAY_Y + 32);
   fill(129,136,152);
-  text('(設定の「音圧の校正」で変えられます)', 500, OVERLAY_Y + 32);
+  if (width >= 520) { text('(設定の「音圧の校正」で変えられます)', 20 + textWidth(calTxt) + 14, OVERLAY_Y + 32); }
 
   const m = 40;
-  const top = OVERLAY_Y + 52;
+  const top = OVERLAY_Y + 78;                      // 見出し(上の説明文)とグラフの題が重ならないように
   const n = width >= 1000 ? 3 : 2;                 // 広い画面ではFFTも並べる
   const panelW = (width - m * (n + 1)) / n;
   const panelH = constrain(height - top - 230, 150, 340);
@@ -2573,7 +2574,7 @@ function drawFFTChart(x, y, w, h) {
   }
   endShape();
   fill(85,92,109); noStroke(); textAlign(LEFT, BOTTOM); textSize(12);
-  text('FFTスペクトル（対数周波数）', x, y - 4);
+  text('FFTスペクトル（対数周波数）', x, y - 6);
   fill(7,14,29); textAlign(RIGHT, TOP); textSize(10);
   text('━ 耳の感度 (40 phon)', x + w - 6, y + 6);
 }
