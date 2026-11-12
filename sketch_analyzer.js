@@ -4,7 +4,7 @@
 //  ② 時間伸長（×5/×10/×20）で人間の耳に聞こえる音にして再生
 //  ③ 検出結果をCSVで保存
 // p5.js Web Editor にそのまま貼り付けて実行できます。
- 
+
 const INFO = {
   '50': { n: '50-kHz', col: '#d4780a', bar: '#ff5fa8', ov: '#ff9ac4', bd: '#ff7ab8', bg: 'rgba(255,122,184,0.10)', gl: 'rgba(255,140,120,0.35)', emo: '歓喜・リラックス', sub: 'ポジティブ・愛着' , ico: '😆' },
   '31': { n: '31-kHz', col: '#3b5bdb', bar: '#5b7bff', ov: '#8fabff', bd: '#5b86ff', bg: 'rgba(91,134,255,0.10)', gl: 'rgba(100,110,255,0.35)', emo: '社会的孤立・不満', sub: '孤立・不平等・嫉妬', ico: '😔' },
@@ -14,7 +14,7 @@ const FONT = '"Hiragino Sans","Noto Sans JP",system-ui,sans-serif';
 const NF = 1024;                    // FFTサイズ
 const VIEWS = [2, 5, 10, 30, 60];   // 表示幅(秒)の候補
 const SLOW = [5, 10, 20];           // 時間伸長の倍率
- 
+
 let DATA = null;                    // {d:Float32Array, sr, name, dur, maxAbs}
 let AN = { state: 'idle' };         // 解析状態
 let img = null, calls = [], TH = 14; // スペクトログラム画像 / 検出コール / しきい値(dB)
@@ -24,20 +24,36 @@ let pb = { playing: false, N: 10, buf: null, bufN: 0, src: null, t0: 0, off: 0, 
 let actx = null, master = null;
 let drag = null;
 let rev, cosT, sinT, hann;
- 
-function setup() {
+
+// ---- 画面幅（PCのスクロールバー分を除く）とエラー表示 ----
+const vw = () => Math.max(320, document.documentElement.clientWidth || windowWidth);
+function showErr(e) {
+  console.error(e);
+  let d = document.getElementById('usv-err');
+  if (!d) {
+    d = document.createElement('div'); d.id = 'usv-err';
+    d.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:9999;background:#fff0f0;color:#b00020;border:1px solid #b00020;border-radius:8px;padding:8px 10px;font:12px/1.5 monospace;white-space:pre-wrap;max-height:40vh;overflow:auto';
+    document.body.appendChild(d);
+  }
+  d.textContent = 'エラー: ' + (e && e.stack ? e.stack.split('\n').slice(0, 5).join('\n') : e);
+}
+window.addEventListener('error', ev => showErr(ev.message + ' (' + (ev.lineno || '?') + '行)'));
+window.addEventListener('unhandledrejection', ev => showErr(ev.reason));
+
+function setup() { try { setupMain(); } catch (e) { showErr(e); } }
+function setupMain() {
   pixelDensity(1);
-  createCanvas(windowWidth, 700);
+  createCanvas(vw(), 700);
   textFont(FONT);
   initFFT();
   fi = createFileInput(onFile); fi.hide(); fi.attribute('accept', 'audio/*,.wav');
   layout();
 }
-function windowResized() { layout(); }
- 
+function windowResized() { try { layout(); } catch (e) { showErr(e); } }
+
 // ================= レイアウト =================
 function layout() {
-  const m = 14, w = windowWidth, y0 = 92;
+  const m = 14, w = vw(), y0 = 92;
   UI.wide = w >= 820;
   const cols = UI.wide ? 5 : 3, rows = ceil(10 / cols);
   const ctlH = 34 + rows * 52 + 8;
@@ -59,13 +75,13 @@ function layout() {
   const c = UI.ctl, bw = (c.w - 2 * m - (cols - 1) * 8) / cols;
   UI.btns = [];
   for (let i = 0; i < 10; i++) UI.btns.push({ i, x: c.x + m + (i % cols) * (bw + 8), y: c.y + 34 + floor(i / cols) * 52, w: bw, h: 44, t: -9999 });
-  if (height !== UI.totalH) resizeCanvas(w, UI.totalH); else if (width !== w) resizeCanvas(w, UI.totalH);
+  if (height !== UI.totalH || width !== w) resizeCanvas(w, UI.totalH);
 }
 function btnLabel(i) {
   return ['📂 ファイル', '🧪 テスト信号', pb.playing ? '■ 停止' : '▶ 再生', '⏮ 前の声', '⏭ 次の声',
     '🐢 ×' + pb.N, '🔍 ' + VIEWS[vi] + '秒', '感度 ＋', '感度 －', '💾 CSV'][i];
 }
- 
+
 // ================= 音声ファイル読み込み =================
 function onFile(f) {
   if (!f || !f.file) return;
@@ -125,7 +141,7 @@ function makeTest() { // 動作確認用の合成信号（250 kHz）
   add(4.0, 0.72, u => 24e3 - 2e3 * u + 400 * Math.sin(u * 40), 0.4); add(5.5, 0.6, u => 23e3 - 1.5e3 * u, 0.4);
   loadSignal(d, sr, 'テスト信号（合成・250kHz）');
 }
- 
+
 // ================= FFT・解析 =================
 function initFFT() {
   rev = new Uint16Array(NF); const bits = Math.log2(NF);
@@ -187,7 +203,7 @@ function finishAnalysis() {
   AN.state = 'done';
   detect();
 }
- 
+
 // ================= コール検出・分類 =================
 const bandOf = f => (f >= 40 && f <= 100) ? '50' : (f >= 26 && f < 40) ? '31' : (f >= 18 && f < 26) ? '22' : null;
 function detect() {
@@ -216,10 +232,10 @@ function stats() {
   for (const c of calls) if (c.type) { const s = S[c.type]; s.n++; s.f += c.fm; s.d += c.dur; tot++; }
   return { S, tot };
 }
- 
+
 // ================= 再生（時間伸長） =================
 function A() {
-  actx = getAudioContext();
+  if (!actx) actx = (typeof getAudioContext === 'function') ? getAudioContext() : new (window.AudioContext || window.webkitAudioContext)();
   if (!master) { master = actx.createGain(); master.connect(actx.destination); }
   if (actx.state === 'suspended') actx.resume();
   return actx;
@@ -252,14 +268,15 @@ function jump(dir) {
   play(Math.max(0, c.t0 - 0.05), c.dur + 0.12); followView(c.t0);
 }
 function followView(t) { if (t < view.s || t > view.s + view.w * 0.9) view.s = constrain(t - view.w * 0.1, 0, Math.max(0, DATA.dur - view.w)); }
- 
+
 // ================= 描画 =================
 function T(s, x, y, sz, col, al, bold) { noStroke(); fill(col); textSize(sz); textStyle(bold ? BOLD : NORMAL); textAlign(al || LEFT, CENTER); text(s, x, y); }
 function panel(x, y, w, h) {
   const c = drawingContext; c.save(); c.shadowColor = 'rgba(40,60,130,0.12)'; c.shadowBlur = 18; c.shadowOffsetY = 4;
   fill(255); stroke(70, 90, 160, 45); strokeWeight(1); rect(x, y, w, h, 16); c.restore();
 }
-function draw() {
+function draw() { try { drawMain(); } catch (e) { showErr(e); } }
+function drawMain() {
   background('#eef2fb');
   if (AN.state === 'run') { stepAnalysis(); status = '解析中… ' + Math.floor(AN.f / AN.F * 100) + '%'; }
   if (DATA && pb.playing) { const p = posNow(); followView(p); }
@@ -269,7 +286,7 @@ function draw() {
   T(status, 14, 72, 11, '#33405f');
   drawSpec(); drawOverview(); drawControls(); drawDash();
 }
- 
+
 function drawSpec() {
   const s = UI.spec, n = UI.inner, c = drawingContext;
   panel(s.x, s.y, s.w, s.h);
@@ -355,7 +372,7 @@ function drawDash() {
   T('感度しきい値 ' + TH + ' dB（小さいほど敏感）', d.x + 16, d.y + d.h - 34, 10, '#6b7694');
   T('※周波数帯による簡易分類です（目安）', d.x + 16, d.y + d.h - 18, 10, '#6b7694');
 }
- 
+
 // ================= 入力 =================
 const inR = (r, pad) => mouseX >= r.x - (pad || 0) && mouseX <= r.x + r.w + (pad || 0) && mouseY >= r.y - (pad || 0) && mouseY <= r.y + r.h + (pad || 0);
 function act(i) {
@@ -375,8 +392,11 @@ function saveCsv() {
   saveStrings(L, 'usv_calls', 'csv');
 }
 function timeAtX(x) { return constrain(view.s + (x - UI.inner.x) / UI.inner.w * view.w, 0, DATA.dur); }
-function mousePressed() {
-  userStartAudio();
+function mousePressed() { try { return mp(); } catch (e) { showErr(e); } }
+function mouseDragged() { try { return md(); } catch (e) { showErr(e); } }
+function mouseReleased() { try { mr(); } catch (e) { showErr(e); } }
+function mp() {
+  if (typeof userStartAudio === 'function') userStartAudio();
   for (const b of UI.btns) if (inR(b)) { b.t = millis(); act(b.i); return false; }
   if (!DATA) return;
   if (inR(UI.inner)) { drag = { kind: 'spec', x0: mouseX, vs: view.s, moved: false }; return false; }
@@ -386,7 +406,7 @@ function ovSet() {
   const t = constrain((mouseX - UI.ov.x) / UI.ov.w * DATA.dur, 0, DATA.dur);
   view.s = constrain(t - view.w / 2, 0, Math.max(0, DATA.dur - view.w)); pos = t; if (pb.playing) play(t);
 }
-function mouseDragged() {
+function md() {
   if (!drag || !DATA) return;
   if (drag.kind === 'spec') {
     const dx = mouseX - drag.x0; if (Math.abs(dx) > 6) drag.moved = true;
@@ -395,7 +415,7 @@ function mouseDragged() {
   }
   if (drag.kind === 'ov') { const t = constrain((mouseX - UI.ov.x) / UI.ov.w * DATA.dur, 0, DATA.dur); view.s = constrain(t - view.w / 2, 0, Math.max(0, DATA.dur - view.w)); return false; }
 }
-function mouseReleased() {
+function mr() {
   if (drag && drag.kind === 'spec' && !drag.moved && DATA) { const t = timeAtX(mouseX); pos = t; if (pb.playing) play(t); }
   drag = null;
 }
