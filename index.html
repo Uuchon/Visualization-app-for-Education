@@ -1,15 +1,99 @@
 <!DOCTYPE html>
 <html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <script src="https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/p5.sound@0.4.1/dist/p5.sound.min.js"></script>
-    <link rel="stylesheet" type="text/css" href="style.css">
-  </head>
-  <body>
-    <main></main>
-    <script src="sketch.js"></script>
-    <script src="responsive.js"></script>
-  </body>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WAVE LAB — 教育用の音の可視化</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Space+Grotesk:wght@300;400;500;600&family=Zen+Kaku+Gothic+New:wght@300;400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/p5.sound@0.4.1/dist/p5.sound.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <header class="appbar">
+    <div class="brand">WAVE LAB<small>SOUND → COLOUR / EDUCATION</small></div>
+    <nav class="mainnav" id="mainnav" aria-label="メインメニュー">
+      <button data-page="home">体験する</button>
+      <button data-group="detail">くわしく見る</button>
+      <button data-page="settings">設定</button>
+    </nav>
+    <div class="tools">
+      <a id="newTab" href="#" target="_blank" rel="noopener" hidden>別タブで開く ↗</a>
+      <button id="fsBtn" hidden>全画面</button>
+    </div>
+  </header>
+  <nav class="subnav" id="subnav" aria-label="くわしく見る">
+    <button data-page="graph">グラフ</button>
+    <button data-page="class">授業</button>
+    <button data-page="report">記録</button>
+  </nav>
+
+  <div class="sourcebar" id="slot-sources"><span class="srclabel">INPUT</span></div>
+
+  <div class="welcome" id="welcome">
+    <b>START</b>
+    <span>「マイク」「ファイル」「テスト音」のどれかを押す → 円の色と大きさの変化を見る → 「くわしく見る」「設定」で調べる</span>
+    <button id="welcomeClose" aria-label="閉じる">×</button>
+  </div>
+
+  <div class="toolbar" id="slot-class"></div>
+  <div class="toolbar" id="slot-report"></div>
+
+  <div id="stage">
+    <aside id="panel-settings" aria-label="設定">
+      <div class="sec">
+        <h3><span>01</span>色に対応させる周波数（Hz）</h3>
+        <p class="hint">音の高さを、どの範囲で赤〜紫に対応させるかを決めます。広い画面では、右のプレビューに設定がすぐ反映されます。</p>
+        <div class="slot" id="slot-set-color"></div>
+      </div>
+      <div class="sec">
+        <h3><span>02</span>音量・校正</h3>
+        <p class="hint">画面のphonは相対値です。色がうすい・暗いときは、大きめの声で「自動で合わせる」を押してください。</p>
+        <div class="slot" id="slot-set-volume"></div>
+      </div>
+      <div class="sec">
+        <h3><span>03</span>ノイズ除去</h3>
+        <p class="hint">音声ファイルは音そのものから雑音を引きます。マイクは、静かにして登録した環境ノイズ（エアコン・外の音など）を、色やグラフの解析から引きます。</p>
+        <div class="slot" id="slot-set-noise"></div>
+      </div>
+      <div class="sec">
+        <h3><span>04</span>表示</h3>
+        <p class="hint">低い音を細かく見たいときは「高」「最高」。反応は少しゆっくりになります。</p>
+        <div class="slot" id="slot-set-display"></div>
+      </div>
+    </aside>
+  </div>
+
+</div>
+
+<script src="sketch.js"></script>
+<script>
+  // 埋め込み(?embed=1)のときだけ「別タブで開く」を出す / 全画面は許可されているときだけ出す
+  (function () {
+    var q = new URLSearchParams(location.search);
+    var embedded = q.get('embed') === '1' || window.top !== window.self;
+    var nt = document.getElementById('newTab');
+    if (embedded) { nt.hidden = false; nt.href = location.pathname; }
+    var fs = document.getElementById('fsBtn');
+    if (document.fullscreenEnabled) {
+      fs.hidden = false;
+      fs.addEventListener('click', function () {
+        if (document.fullscreenElement) { document.exitFullscreen(); } else { document.documentElement.requestFullscreen(); }
+      });
+    }
+    // はじめての方へ: 閉じたら、このタブの間は出さない
+    var w = document.getElementById('welcome');
+    try { if (sessionStorage.getItem('welcomeClosed')) { w.style.display = 'none'; } } catch (e) {}
+    document.getElementById('welcomeClose').addEventListener('click', function () {
+      w.style.display = 'none';
+      try { sessionStorage.setItem('welcomeClosed', '1'); } catch (e) {}
+      window.dispatchEvent(new Event('resize'));
+    });
+  })();
+</script>
+</body>
 </html>
