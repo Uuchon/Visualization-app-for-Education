@@ -25,7 +25,7 @@ body {
 :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 /* ---- 上のバー ---- */
-.appbar { display: flex; align-items: center; gap: 18px; padding: 0 16px; min-height: 46px; flex: none; border-bottom: 1px solid var(--border); background: var(--background); }
+.appbar { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); display: flex; align-items: center; gap: 18px; padding: 0 16px; min-height: 46px; flex: none; border-bottom: 1px solid var(--border); background: var(--background); }
 .brand { font-family: var(--font-mono); font-size: 10px; letter-spacing: .28em; text-transform: uppercase; line-height: 1.5; white-space: nowrap; }
 .brand small { display: block; color: var(--muted-foreground); letter-spacing: .22em; font-size: 9px; }
 .mainnav { display: flex; gap: 2px; margin: 0 auto; }
@@ -66,7 +66,7 @@ body {
 select { font: inherit; font-size: 13px; padding: 8px 10px; min-height: 36px; border: 1px solid var(--input); border-radius: var(--radius); background: #fcfcfa; color: var(--foreground); max-width: 100%; }
 
 /* ---- キャンバスの場所 ---- */
-#stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+#stage { position: relative; flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 main:empty { display: none; }
 #stage canvas { display: block; }
 
@@ -95,3 +95,19 @@ main:empty { display: none; }
   .welcome span { font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) { .btn.on::before { animation: none; } }
+
+/* 画面が低いとき（スマホの横向きなど）: 上の帯を細くして、キャンバスの場所を広げる */
+@media (max-height: 520px) {
+  .welcome, .brand, .srclabel { display: none !important; }
+  .appbar { min-height: 38px; padding-top: 0; padding-bottom: 0; flex-wrap: nowrap; }
+  .mainnav { margin: 0 auto 0 0; }
+  .mainnav button { padding: 10px 11px 8px; font-size: 12px; }
+  .mainnav button.active::after { bottom: 4px; }
+  .subnav { padding-top: 0; padding-bottom: 0; }
+  .subnav button { padding: 6px 10px 4px; }
+  .sourcebar { padding: 5px max(10px, env(safe-area-inset-left)); gap: 6px; }
+  .btn { min-height: 32px; padding: 0 10px; font-size: 10px; letter-spacing: .04em; }
+  .toolbar { padding: 4px 10px; gap: 6px; }
+  select { min-height: 30px; padding: 4px 8px; font-size: 12px; }
+  #panel-settings { padding: 12px 14px 30px; }
+}
