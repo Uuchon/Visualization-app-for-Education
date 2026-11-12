@@ -1,0 +1,72 @@
+/* WAVE LAB スマホ版: Sound Beyond Hearing サイトと同じ配色・書体 */
+:root {
+  --background: hsl(60 20% 97%); --foreground: hsl(222 60% 7%); --card: hsl(60 16% 95%);
+  --primary: hsl(230 100% 57%); --muted: hsl(222 12% 38%); --border: hsl(222 14% 80%); --input: hsl(222 14% 76%);
+  --radius: .25rem;
+  --spectral: linear-gradient(100deg, hsl(190 92% 44%), hsl(230 100% 57%) 26%, hsl(265 92% 60%) 52%, hsl(322 92% 56%) 76%, hsl(73 92% 56%));
+  --sans: "Space Grotesk", "Zen Kaku Gothic New", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, monospace;
+  --bar: 44px;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; min-height: 100%; background: var(--background); color: var(--foreground); font-family: var(--sans); color-scheme: light; -webkit-text-size-adjust: 100%; }
+.bar { position: sticky; top: 0; z-index: 5; height: var(--bar); display: flex; align-items: center; justify-content: space-between; padding: 0 max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left)); background: var(--background); border-bottom: 1px solid var(--border); }
+.brand { font-family: var(--mono); font-size: 10px; letter-spacing: .28em; text-transform: uppercase; line-height: 1.4; }
+.brand small { display: block; font-size: 8px; color: var(--muted); letter-spacing: .22em; }
+.pc { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; color: var(--muted); text-decoration: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
+
+.layout { padding: 0 max(14px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); }
+.stage { padding: 14px 0 6px; }
+.orbwrap { height: min(44vh, 80vw); display: grid; place-items: center; }
+#orb { width: 100%; max-width: 100%; aspect-ratio: 1; border-radius: 50%; background: hsl(222 20% 90%); transform: scale(.4); max-height: 100%; width: auto; height: 100%; box-shadow: 0 0 0 1px var(--border) inset; will-change: transform, background-color; }
+.note { display: flex; flex-direction: column; align-items: center; margin-top: 4px; min-height: 58px; }
+#noteName { font-size: 34px; font-weight: 600; letter-spacing: .02em; line-height: 1.15; }
+#noteSub { font-size: 12px; color: var(--muted); }
+.gauge { margin: 8px auto 0; max-width: 460px; }
+.gtrack { position: relative; height: 10px; border-radius: 5px; background: linear-gradient(90deg, hsl(222 80% 70%), hsl(150 55% 52%) 42%, hsl(150 55% 52%) 58%, hsl(0 75% 66%)); opacity: .85; }
+.gtrack .tick { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; background: var(--foreground); }
+#needle { position: absolute; top: -6px; width: 6px; height: 22px; margin-left: -3px; left: 50%; border-radius: 3px; background: var(--foreground); border: 2px solid var(--background); opacity: .25; }
+.glabels { display: flex; justify-content: space-between; margin-top: 6px; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; color: var(--muted); }
+#centsTxt { color: var(--foreground); }
+.actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px auto 0; max-width: 460px; }
+.btn { font-family: var(--mono); font-size: 13px; letter-spacing: .06em; min-height: 52px; color: var(--foreground); background: transparent; border: 1px solid var(--foreground); border-radius: var(--radius); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; touch-action: manipulation; }
+.btn:active { background: var(--foreground); color: var(--background); }
+.btn.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn.on::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+.msg { min-height: 18px; margin: 8px 0 0; text-align: center; font-size: 12px; color: var(--muted); }
+.msg.err { color: hsl(0 70% 42%); }
+
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-top: 12px; }
+.lbl { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+select { width: 100%; font: inherit; font-size: 15px; min-height: 46px; padding: 0 10px; border: 1px solid var(--input); border-radius: var(--radius); background: #fcfcfa; color: var(--foreground); }
+.strip { position: relative; height: 16px; margin-top: 14px; border-radius: 3px; }
+.strip i { position: absolute; top: -6px; width: 0; height: 0; margin-left: -6px; border: 6px solid transparent; border-top: 8px solid var(--foreground); border-bottom: 0; opacity: 0; }
+.stripl { display: flex; justify-content: space-between; margin-top: 4px; font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; }
+.grid span { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.grid b { font-family: var(--mono); font-size: 17px; font-weight: 500; }
+canvas { display: block; width: 100%; height: 120px; background: #fcfcfa; border: 1px solid var(--border); border-radius: var(--radius); }
+.axis { display: flex; justify-content: space-between; margin-top: 4px; font-family: var(--mono); font-size: 10px; color: var(--muted); }
+input[type=range] { width: 100%; height: 34px; accent-color: var(--primary); }
+.hint { margin: 4px 0 0; font-size: 12px; line-height: 1.7; color: var(--muted); }
+.lbl b { font-weight: 500; color: var(--foreground); }
+
+/* 横向き・低い画面: 左右2列にして、それぞれ縦にスクロール */
+@media (orientation: landscape) and (max-height: 560px) {
+  :root { --bar: 36px; }
+  html, body { height: 100%; overflow: hidden; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; height: calc(100dvh - var(--bar)); padding-bottom: 0; }
+  .stage, .side { overflow-y: auto; min-height: 0; padding-bottom: 16px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .stage { padding-top: 6px; }
+  .side { padding-top: 6px; }
+  .side .card:first-child { margin-top: 0; }
+  .orbwrap { height: min(40vh, 44vw); }
+  #noteName { font-size: 26px; }
+  .note { min-height: 44px; }
+  .btn { min-height: 44px; font-size: 12px; }
+  .brand small { display: none; }
+}
+@media (min-width: 900px) and (orientation: landscape) and (min-height: 561px) {
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 1100px; margin: 0 auto; }
+}
+@media (prefers-reduced-motion: reduce) { .btn.on::before { animation: none; } }
